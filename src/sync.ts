@@ -1,12 +1,14 @@
 // Optional cloud sync. Local-first: everything works signed out; signing in merges projects by id, last write wins.
 import { useSyncExternalStore } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Snapshot } from './engine/analyze.ts'
+import type { Version } from './engine/curate.ts'
 import { clearTombstones, getData, getProjects, loadProjects, onProjectChange, putData, saveProject, tombstones, type Dataset, type Project } from './store.ts'
 
 export const APP_ID = 'episode-qa'
-/** Raw incident lists above this stay on the device; people, settings, fixes and snapshots always sync. */
+/** Raw frame data above this stays on the device; limits, rules, curation, versions and per-episode results always sync. */
 export const RAW_SYNC_LIMIT = 1_500_000
+/** Rows must stay under ~3.5 MB; past this the downsampled paths used for duplicate search are left out. */
+const ROW_LIMIT = 3_000_000
 
 const URL_ = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined
@@ -92,7 +94,7 @@ function schedule() {
 }
 
 interface CloudRow { id: string; name: string; data: CloudData; updated_at: string; created_at: string }
-interface CloudData { project: Omit<Project, 'snapshots' | 'dataMissing'>; dataset?: Dataset }
+interface CloudData { project: Omit<Project, 'versions' | 'dataMissing'>; dataset?: Dataset }
 
 let running: Promise<void> | null = null
 export function syncNow(): Promise<void> {
@@ -123,8 +125,8 @@ async function doSync() {
       ? await c.from('project_versions').select('id,project_id,label,data,created_at').in('project_id', ids)
       : { data: [], error: null }
     if (verr) throw verr
-    const cloudVersions = new Map<string, Snapshot[]>()
-    for (const v of vrows as { id: string; project_id: string; data: Snapshot }[]) {
+    const cloudVersions = new Map<string, Version[]>()
+    for (const v of vrows as { id: string; project_id: string; data: Version }[]) {
       const l = cloudVersions.get(v.project_id) ?? []
       l.push({ ...v.data, id: v.id })
       cloudVersions.set(v.project_id, l)
@@ -138,26 +140,27 @@ async function doSync() {
       if (lp && (!cp || lp.updatedAt > cloudTime)) {
         const ds = lp.sampleId ? undefined : await getData(id)
         const raw = ds ? JSON.stringify(ds) : ''
-        const { snapshots: _s, dataMissing: _m, ...meta } = lp
-        const payload: CloudData = { project: meta, ...(raw && raw.length <= RAW_SYNC_LIMIT ? { dataset: ds } : {}) }
+        const { versions: _v, dataMissing: _m, ...meta } = lp
+        let payload: CloudData = { project: meta, ...(raw && raw.length <= RAW_SYNC_LIMIT ? { dataset: ds } : {}) }
+        if (JSON.stringify(payload).length > ROW_LIMIT) payload = { project: { ...meta, stats: meta.stats.map(s => ({ ...s, path: [] })) } }
         const { error: e1 } = await c.from('projects').upsert({ id, app: APP_ID, name: lp.name, data: payload, updated_at: new Date(lp.updatedAt).toISOString() })
         if (e1) throw e1
       } else if (cp && (!lp || cloudTime > lp.updatedAt)) {
         const { project, dataset } = cp.data
         const hasLocal = !!(await getData(id))
         if (dataset) await putData(id, dataset)
-        await saveProject({ ...project, id, name: cp.name, updatedAt: cloudTime, snapshots: lp?.snapshots ?? [], dataMissing: !project.sampleId && !dataset && !hasLocal }, { touch: false, silent: true })
+        await saveProject({ ...project, id, name: cp.name, updatedAt: cloudTime, versions: lp?.versions ?? [], dataMissing: !project.sampleId && !dataset && !hasLocal }, { touch: false, silent: true })
       }
-      // Snapshots: union by id in both directions.
+      // Versions: union by id in both directions.
       const now = getProjects().find(p => p.id === id)
       if (!now) continue
-      const missingUp = now.snapshots.filter(s => !cvs.some(v => v.id === s.id))
+      const missingUp = now.versions.filter(s => !cvs.some(v => v.id === s.id))
       if (missingUp.length) {
         const { error: e2 } = await c.from('project_versions').insert(missingUp.map(s => ({ id: s.id, project_id: id, label: s.label, data: s })))
         if (e2) throw e2
       }
-      const missingDown = cvs.filter(v => !now.snapshots.some(s => s.id === v.id))
-      if (missingDown.length) await saveProject({ ...now, snapshots: [...now.snapshots, ...missingDown].sort((a, b) => a.period.localeCompare(b.period)) }, { touch: false, silent: true })
+      const missingDown = cvs.filter(v => !now.versions.some(s => s.id === v.id))
+      if (missingDown.length) await saveProject({ ...now, versions: [...now.versions, ...missingDown].sort((a, b) => a.at - b.at) }, { touch: false, silent: true })
     }
     set({ status: 'synced', lastSynced: Date.now() })
   } catch (e) {
@@ -165,7 +168,7 @@ async function doSync() {
   }
 }
 
-export async function deleteSnapshotCloud(id: string) {
+export async function deleteVersionCloud(id: string) {
   if (!state.user) return
   try { const c = await client(); await c.from('project_versions').delete().eq('id', id) } catch { /* offline: the next sync may bring it back, which is harmless */ }
 }

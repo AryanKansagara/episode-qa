@@ -64,7 +64,7 @@ export function ThemeToggle() {
   )
 }
 
-export const Monogram = () => <span className="monogram" aria-hidden="true">OH</span>
+export const Monogram = () => <span className="monogram" aria-hidden="true">EQ</span>
 
 // ---------- Toasts with undo ----------
 
@@ -230,7 +230,7 @@ function AccountMenu() {
               void run(() => mode === 'in' ? signIn(email, pw) : signUp(email, pw), mode === 'in' ? 'Signed in. Syncing your projects.' : 'Account created. Syncing your projects.')
             }}>
               <h3>{mode === 'in' ? 'Sign in to sync' : 'Create an account'}</h3>
-              <p className="muted small">Optional. Everything works signed out. Signing in syncs teams, people, fixes and snapshots across devices; incident lists over 1.5 MB stay on this device.</p>
+              <p className="muted small">Optional. Everything works signed out. Signing in syncs joint limits, thresholds, curation rules, per-episode results and versions across devices; raw frame data over 1.5 MB stays on this device.</p>
               {!cloudConfigured && <p className="error small">Sync is not configured for this build.</p>}
               <label className="field"><span>Email</span><input name="email" type="email" required autoComplete="email" /></label>
               <label className="field"><span>Password</span><input name="password" type="password" required minLength={6} autoComplete={mode === 'in' ? 'current-password' : 'new-password'} /></label>
@@ -246,7 +246,7 @@ function AccountMenu() {
               <button type="button" className="btn ghost sm block" onClick={() => void run(async () => download(`episode-qa-export-${new Date().toISOString().slice(0, 10)}.json`, await exportAll()))}>Export all my data (JSON)</button>
               <button type="button" className="btn ghost sm block" onClick={() => void run(signOut, 'Signed out. Your projects stay on this device.')}>Sign out</button>
               <hr />
-              <button type="button" className="btn danger-ghost sm block" disabled={busy} onClick={async () => { if (await ask('Delete cloud data?', 'Removes every On-call Health team and snapshot from the cloud. Copies on this device are kept.', 'Delete cloud data')) void run(deleteCloudData, 'Cloud data deleted.') }}>Delete my cloud data</button>
+              <button type="button" className="btn danger-ghost sm block" disabled={busy} onClick={async () => { if (await ask('Delete cloud data?', 'Removes every Episode QA dataset and version from the cloud. Copies on this device are kept.', 'Delete cloud data')) void run(deleteCloudData, 'Cloud data deleted.') }}>Delete my cloud data</button>
               <button type="button" className="btn danger-ghost sm block" disabled={busy} onClick={async () => { if (await ask('Delete your account?', 'Deletes your account and all cloud data. Projects on this device are kept. This cannot be undone.', 'Delete account')) void run(deleteAccount, 'Account deleted.') }}>Delete my account</button>
               {err && <p className="error small" role="alert">{err}</p>}
             </div>
@@ -260,11 +260,11 @@ function AccountMenu() {
 export function Header() {
   const path = location.pathname
   const [menu, setMenu] = useState(false)
-  const nav = [['/', 'Product'], ['/app', 'Teams'], ['/docs', 'Docs'], ['/settings', 'Settings']] as const
+  const nav = [['/', 'Product'], ['/app', 'Datasets'], ['/docs', 'Docs'], ['/settings', 'Settings']] as const
   return (
     <header className="header">
       <div className="header-inner">
-        <Link href="/" className="brand" aria-label="On-call Health home"><Monogram /><span>On-call Health</span></Link>
+        <Link href="/" className="brand" aria-label="Episode QA home"><Monogram /><span>Episode QA</span></Link>
         <nav className={`nav${menu ? ' open' : ''}`} aria-label="Main">
           {nav.map(([h, l]) => <Link key={h} href={h} onClick={() => setMenu(false)} aria-current={(h === '/' ? path === '/' : path.startsWith(h)) ? 'page' : undefined}>{l}</Link>)}
         </nav>
@@ -287,23 +287,23 @@ export function Footer() {
   return (
     <footer className="footer">
       <div className="footer-inner">
-        <div className="footer-brand"><Monogram /> <strong>On-call Health</strong></div>
-        <nav className="footer-nav" aria-label="Footer"><Link href="/app">Teams</Link><Link href="/docs">Docs</Link><Link href="/settings">Settings</Link></nav>
-        <p>Built by Aryan Kansagara. Independent project, not affiliated with Rootly.</p>
-        <p className="muted small">Sample teams are synthetic. Your exports are processed in your browser and stored on this device unless you sign in to sync.</p>
+        <div className="footer-brand"><Monogram /> <strong>Episode QA</strong></div>
+        <nav className="footer-nav" aria-label="Footer"><Link href="/app">Datasets</Link><Link href="/docs">Docs</Link><Link href="/settings">Settings</Link></nav>
+        <p>Built by Aryan Kansagara. Independent project, not affiliated with Sanctuary AI.</p>
+        <p className="muted small">The sample dataset is synthetic. Your logs are parsed in your browser and stored on this device unless you sign in to sync.</p>
       </div>
     </footer>
   )
 }
 
 export function NotFound() {
-  useEffect(() => { document.title = 'Not found · On-call Health' }, [])
+  useEffect(() => { document.title = 'Not found · Episode QA' }, [])
   return (
     <section className="page narrow center notfound">
       <div className="nf-code" aria-hidden="true">404</div>
-      <h1>Nobody is on call for this page</h1>
-      <p className="muted">The page you asked for does not exist. No alert fired, so nobody was woken up.</p>
-      <div className="row gap center-x"><Link href="/" className="btn ghost">Home</Link><Link href="/app" className="btn primary">Your teams</Link></div>
+      <h1>This frame was dropped</h1>
+      <p className="muted">The page you asked for is not in the log. The gap detector would flag it, but there is nothing to trim.</p>
+      <div className="row gap center-x"><Link href="/" className="btn ghost">Home</Link><Link href="/app" className="btn primary">Your datasets</Link></div>
     </section>
   )
 }
@@ -312,4 +312,4 @@ export function Empty({ title, children, icon }: { title: string; children?: Rea
   return <div className="empty">{icon ?? <div className="empty-icon" aria-hidden="true" />}<h3>{title}</h3>{children}</div>
 }
 
-export const SyntheticBadge = () => <span className="badge synthetic" title="Generated data, not a real team">Synthetic</span>
+export const SyntheticBadge = () => <span className="badge synthetic" title="Generated data, not real robot logs">Synthetic</span>

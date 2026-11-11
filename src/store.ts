@@ -1,19 +1,13 @@
 import { useSyncExternalStore } from 'react'
-import type { RotaInput, Snapshot } from './engine/analyze.ts'
-import type { Config, Incident } from './engine/types.ts'
-import type { Format } from './engine/csv.ts'
-import { DEFAULT_POLICY } from './engine/sample.ts'
+import { defaultConfig } from './engine/analyze.ts'
+import type { Override, Rule, Version } from './engine/curate.ts'
+import type { Kind } from './engine/parse.ts'
+import type { Config, Episode, EpisodeStats } from './engine/types.ts'
 
-export type Dataset = Incident[]
+export type Dataset = Episode[]
 
-export interface ImportMeta {
-  id: string
-  kind: Format
-  fileName: string
-  rows: number
-  skipped: number
-  at: number
-}
+export interface ImportMeta { id: string; kind: Kind; fileName: string; rows: number; skipped: number; episodes: number; at: number }
+export interface LogEntry { at: number; text: string }
 
 export interface Project {
   id: string
@@ -21,15 +15,18 @@ export interface Project {
   createdAt: number
   updatedAt: number
   config: Config
-  snapshots: Snapshot[]
+  rules: Rule[]
+  overrides: Record<string, Override>
+  /** Tag edits per episode; replaces the imported tags for that episode. */
+  tagEdits: Record<string, string[]>
+  /** Derived per-episode results. Synced, so other devices can curate without the raw frames. */
+  stats: EpisodeStats[]
+  versions: Version[]
+  log: LogEntry[]
   imports: ImportMeta[]
-  /** Built-in synthetic account; its data is regenerated instead of stored. */
+  /** Built-in synthetic dataset; its frames are regenerated instead of stored. */
   sampleId?: string
-  /** Rotation simulator inputs */
-  rota?: RotaInput
-  /** Compensation: on-call weeks per person when the observed count is wrong */
-  weeks?: Record<string, number>
-  /** True when this device has no copy of the raw data (synced from another device). */
+  /** True when this device has no copy of the raw frames (synced from another device). */
   dataMissing?: boolean
 }
 
@@ -141,16 +138,9 @@ export const clearTombstones = (ids: string[]) => localStorage.setItem(TOMB, JSO
 
 // ---------- App defaults (settings page) ----------
 
-export interface Defaults { tz: string; sleepStart: number; sleepEnd: number; autoResolveMin: number; flapWindowMin: number; workStart: number; workEnd: number }
 const DEF_KEY = 'episode-qa.defaults'
-const localTz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' } catch { return 'UTC' } }
-export function getDefaults(): Defaults {
-  const base: Defaults = { tz: localTz(), sleepStart: 22, sleepEnd: 7, autoResolveMin: 5, flapWindowMin: 60, workStart: 9, workEnd: 17.5 }
-  try { return { ...base, ...JSON.parse(localStorage.getItem(DEF_KEY) ?? '{}') } } catch { return base }
+export function getDefaults(): Config {
+  const base = defaultConfig()
+  try { const d = JSON.parse(localStorage.getItem(DEF_KEY) ?? 'null'); return d ? { limits: d.limits ?? base.limits, th: { ...base.th, ...d.th } } : base } catch { return base }
 }
-export const setDefaults = (d: Defaults) => localStorage.setItem(DEF_KEY, JSON.stringify(d))
-
-export function blankConfig(): Config {
-  const d = getDefaults()
-  return { people: {}, defaultTz: d.tz, sleepStart: d.sleepStart, sleepEnd: d.sleepEnd, autoResolveMin: d.autoResolveMin, flapWindowMin: d.flapWindowMin, flapMinFirings: 3, applied: [], policy: { ...DEFAULT_POLICY } }
-}
+export const setDefaults = (c: Config) => localStorage.setItem(DEF_KEY, JSON.stringify(c))

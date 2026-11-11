@@ -25,7 +25,7 @@ function route(full: string) {
   if (path === '/settings') return { page: 'settings' as const }
   if (path === '/app') return { page: 'workspace' as const }
   const m = path.match(/^\/app\/p\/([\w-]+)(?:\/([a-z]+))?$/)
-  if (m && m[2] === 'report') return { page: 'report' as const, id: m[1] }
+  if (m && (m[2] === 'report' || m[2] === 'feedback')) return { page: 'report' as const, id: m[1], sheet: m[2] }
   if (m) return { page: 'project' as const, id: m[1], tab: m[2] ?? 'overview' }
   return { page: '404' as const }
 }
@@ -35,10 +35,10 @@ const Loading = () => <div className="boot" role="status"><span className="spinn
 export function App() {
   const r = route(usePath())
   useEffect(() => {
-    const titles: Record<string, string> = { landing: 'On-call Health: who on-call is waking up, and which alerts to fix first', docs: 'Docs: exporting from PagerDuty, Opsgenie and Rootly · On-call Health', settings: 'Settings · On-call Health', workspace: 'Teams · On-call Health', '404': 'Not found · On-call Health' }
+    const titles: Record<string, string> = { landing: 'Episode QA: quality control and curation for robot teleoperation data', docs: 'Docs: getting episodes out of LeRobot, ROS bags and your logger · Episode QA', settings: 'Settings · Episode QA', workspace: 'Datasets · Episode QA', '404': 'Not found · Episode QA' }
     if (titles[r.page]) document.title = titles[r.page]
   }, [r.page])
-  if (r.page === 'report') return <Suspense fallback={<Loading />}><Report id={r.id} /><Toasts /></Suspense>
+  if (r.page === 'report') return <Suspense fallback={<Loading />}><Report id={r.id} sheet={r.sheet} /><Toasts /></Suspense>
   return (
     <>
       <a className="skip" href="#main">Skip to content</a>
