@@ -473,7 +473,7 @@ tbody tr:hover { background: var(--accent-subtle); }
 .viewer-controls input { flex: 1; min-height: 0; }
 .viewer-controls .play { background: var(--phoenix); color: #000; border-radius: var(--r-md); width: 34px; height: 34px; }
 .feed { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; min-height: 94px; font-size: 13px; }
-.feed li { display: flex; gap: 10px; align-items: baseline; animation: rise .3s var(--ease); }
+.feed li { display: flex; gap: 10px; align-items: baseline; }
 .feed li i { width: 8px; height: 8px; border-radius: 2px; flex: none; transform: translateY(-1px); }
 .feed li .mono { color: var(--ink-3); font-size: 12px; min-width: 52px; }
 .penalties { display: flex; flex-wrap: wrap; gap: 4px 14px; font: 400 11.5px var(--font-mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; min-height: 16px; }
@@ -548,3 +548,5 @@ tbody tr:hover { background: var(--accent-subtle); }
   .hero-card .viewer { padding: 10px; }
 }
 @media print { .ep-detail { box-shadow: none; } .footer { display: none !important; } }
+.ep-detail .plot { max-height: 330px; }
+.ep-detail .viewer-grid { grid-template-columns: minmax(0, 300px) minmax(0, 1fr); align-items: center; }

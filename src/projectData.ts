@@ -16,8 +16,8 @@ export async function createSampleProject(): Promise<Project> {
   const stats = analyzeAll(ds, config)
   const now = Date.now()
   // Two versions so History has something to compare: the first pass, then tighter rules a day later.
-  const loose = newRules().map(r => r.field === 'score' ? { ...r, value: '50' } : r).filter(r => r.field !== 'labelMismatch')
   const rules = newRules()
+  const loose = rules.map(r => r.field === 'score' ? { ...r, value: '50' } : r).filter(r => r.field !== 'labelMismatch')
   const ctx = derive(stats, {}, { th: config.th }).ctx
   const v1 = makeVersion(uuid(), 'Week 44 import', 'import', stats, curate(stats, loose, {}, ctx), loose, now - 86400000)
   const v2 = makeVersion(uuid(), 'Stricter score floor, label check', 'rules', stats, curate(stats, rules, {}, ctx), rules, now - 3600000)

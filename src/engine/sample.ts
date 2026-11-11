@@ -8,7 +8,7 @@ export const SAMPLE_COUNT = 120
 const HZ = 30
 const OPS = ['op-ana', 'op-ben', 'op-chen']
 const TASKS = [
-  { name: 'cube to bin', pick: [0.55, -0.15], place: [0.35, 0.3], width: 0.42 },
+  { name: 'cube to bin', pick: [0.6, -0.2], place: [0.52, 0.3], width: 0.42 },
   { name: 'cylinder to shelf', pick: [0.6, 0.05], place: [0.45, -0.32], width: 0.33 },
   { name: 'sphere to tray', pick: [0.5, 0.2], place: [0.62, -0.1], width: 0.5 },
 ]

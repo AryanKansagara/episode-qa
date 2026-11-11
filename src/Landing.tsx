@@ -40,7 +40,7 @@ export function Landing() {
           </div>
           <div className="hero-card">
             <div className="hero-card-bar"><span className="badge">Live</span><span className="mono tiny">synthetic episode ep_019 · drag the plot to scrub</span></div>
-            <Viewer ep={ep} cfg={cfg} autoplay title="Pick-and-place, op-ben" />
+            <Viewer ep={ep} cfg={cfg} autoplay title="ep_019 · cube to bin" />
           </div>
         </div>
       </section>

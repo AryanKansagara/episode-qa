@@ -477,7 +477,7 @@ function History({ project, update }: TabProps) {
             <div className="kpi"><small>Episodes</small><b>{vb.episodes}</b><p>{sign(vb.episodes - va.episodes)} ({diff.episodesAdded.length} added, {diff.episodesRemoved.length} removed)</p></div>
             <div className="kpi"><small>Kept</small><b>{vb.kept}</b><p>{sign(vb.kept - va.kept)}</p></div>
             <div className="kpi"><small>Mean score</small><b>{vb.meanScore.toFixed(1)}</b><p>{sign(vb.meanScore - va.meanScore, 1)}</p></div>
-            <div className="kpi"><small>Training time</small><b>{fmtS(vb.hours * 3600)}</b><p>recorded, {sign((vb.hours - va.hours) * 3600, 0)} s</p></div>
+            <div className="kpi"><small>Recorded</small><b>{fmtS(vb.hours * 3600)}</b><p>{sign((vb.hours - va.hours) * 3600, 0)} s</p></div>
           </div>
           <div className="grid-2">
             <div>

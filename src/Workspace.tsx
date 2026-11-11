@@ -16,7 +16,8 @@ export default function Workspace() {
     const tab = q.get('tab')?.replace(/[^a-z]/g, '')
     if (!q.get('sample') || list === null || busy) return
     setBusy('sample')
-    void createSampleProject().then(p => go(`/app/p/${p.id}${tab ? '/' + tab : ''}`, { replace: true }))
+    const ep = q.get('ep')
+    void createSampleProject().then(p => go(`/app/p/${p.id}${tab ? '/' + tab : ''}${ep ? `?ep=${encodeURIComponent(ep)}` : ''}`, { replace: true }))
   }, [list, busy])
 
   const openSample = async () => { setBusy('sample'); const p = await createSampleProject(); go(`/app/p/${p.id}`) }

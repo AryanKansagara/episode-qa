@@ -5,7 +5,7 @@ import type { Config, Episode, IssueKind } from './engine/types.ts'
 export const KIND_LABEL: Record<IssueKind, string> = { drop: 'Dropped frames', sync: 'Sync drift', jerk: 'Jerk', saturation: 'Saturation', idle: 'Idle', grasp: 'Failed grasp', label: 'Label mismatch' }
 export const KINDS = Object.keys(KIND_LABEL) as IssueKind[]
 
-const W = 640, H = 250
+const W = 520, H = 250
 const PX = 34, PW = W - PX - 8
 const JT = 10, JH = 128, GT = 148, GH = 26, LT = 186, LH = 18
 
@@ -63,7 +63,20 @@ export function Viewer({ ep, cfg, autoplay = false, speed = 1.6, title }: { ep: 
   }, [playing, visible, tN, t0, autoplay, speed])
 
   const k = Math.max(0, ep.t.findIndex(x => x > t) === -1 ? ep.t.length - 1 : ep.t.findIndex(x => x > t) - 1)
-  const live = useMemo(() => analyzeEpisode(k >= ep.t.length - 1 ? ep : sliceEpisode(ep, ep.t[k]), cfg), [ep, cfg, k])
+  const live = useMemo(() => {
+    if (k >= ep.t.length - 1) return analyzeEpisode(ep, cfg)
+    // If the playhead sits inside a camera's dropped-frame gap, judge sync at the gap's start; otherwise the gap reads as clock offset.
+    let cut = ep.t[k]
+    for (const ts of Object.values(ep.cams)) {
+      const per = ts.length > 1 ? (ts[ts.length - 1] - ts[0]) / (ts.length - 1) : 0
+      const i = ts.findIndex(x => x > cut) - 1
+      if (i >= 0 && ts[i + 1] - ts[i] > cfg.th.dropFactor * per) cut = Math.min(cut, ts[i])
+    }
+    // Cameras keep the frame nearest the cut, so frame phase (up to one period) does not read as offset.
+    const part = sliceEpisode(ep, cut)
+    part.cams = Object.fromEntries(Object.entries(ep.cams).map(([c, ts]) => { const per = ts.length > 1 ? (ts[ts.length - 1] - ts[0]) / (ts.length - 1) : 0; return [c, ts.filter(x => x <= cut + per / 2)] }))
+    return analyzeEpisode(part, cfg)
+  }, [ep, cfg, k])
 
   // Geometry
   const nJ = ep.q[0]?.length ?? 0
@@ -158,7 +171,7 @@ export function Viewer({ ep, cfg, autoplay = false, speed = 1.6, title }: { ep: 
       </div>
       <ol className="feed" aria-live="polite">
         {feed.length === 0 && <li className="muted">Scrub or press play. Issues appear here as the playhead reaches them.</li>}
-        {feed.map((iss, i) => <li key={`${iss.kind}-${iss.t}-${i}`}><i style={{ background: `var(--k-${iss.kind})` }} /><span className="mono tab-nums">{iss.t.toFixed(2)} s</span><span>{iss.msg}</span></li>)}
+        {feed.map(iss => <li key={`${iss.kind}-${iss.t.toFixed(2)}-${iss.msg}`}><i style={{ background: `var(--k-${iss.kind})` }} /><span className="mono tab-nums">{iss.t.toFixed(2)} s</span><span>{iss.msg}</span></li>)}
       </ol>
       <div className="penalties">
         {Object.entries(live.penalties).filter(([, v]) => v > 0.05).map(([kk, v]) => <span key={kk}>{PENALTY_LABELS[kk]} <b>−{v.toFixed(1)}</b></span>)}
