@@ -550,3 +550,7 @@ tbody tr:hover { background: var(--accent-subtle); }
 @media print { .ep-detail { box-shadow: none; } .footer { display: none !important; } }
 .ep-detail .plot { max-height: 330px; }
 .ep-detail .viewer-grid { grid-template-columns: minmax(0, 300px) minmax(0, 1fr); align-items: center; }
+.hero-card .viewer-grid { grid-template-columns: minmax(0, 210px) minmax(0, 1fr); align-items: center; }
+@media (max-width: 720px) { .hero-card .viewer-grid { grid-template-columns: 1fr; } }
+@media (max-width: 960px) { .hero-inner { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 720px) { .hero-ctas .btn { width: 100%; } .viewer-chips { width: 100%; } }

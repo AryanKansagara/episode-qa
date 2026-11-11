@@ -46,7 +46,7 @@ function Body({ project, feedback }: { project: Project; feedback: boolean }) {
               <div className="kpi"><small>Kept for training</small><b>{mine.filter(s => keep.has(s.id)).length}</b></div>
             </div>
             <ul className="feedback">{operatorFeedback(o, ops).map(t => <li key={t}>{t}</li>)}</ul>
-            <p className="small"><strong>Episodes to review together:</strong> {worst.map(s => `${s.id} (score ${s.score}${s.issues[0] ? `, ${s.issues[0].msg.toLowerCase()} at ${s.issues[0].t.toFixed(1)} s` : ''})`).join('; ')}</p>
+            <p className="small"><strong>Episodes to review together:</strong> {worst.map(s => { const pr = ['grasp', 'label', 'jerk', 'saturation', 'idle', 'drop', 'sync']; const i = [...s.issues].sort((a, b) => pr.indexOf(a.kind) - pr.indexOf(b.kind))[0]; return `${s.id} (score ${s.score}${i ? `, ${i.msg.toLowerCase()} at ${i.t.toFixed(1)} s` : ''})` }).join('; ')}</p>
           </section>
         )
       })}
