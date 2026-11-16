@@ -104,6 +104,8 @@ export interface Mapping {
   actionTopic: string
   gripTopic: string
   cameraTopics: string
+  /** Joint and action angle units: auto treats values beyond ±2π as degrees. */
+  angles?: 'auto' | 'rad' | 'deg'
 }
 
 const natural = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true })
@@ -141,6 +143,7 @@ export function autoMap(headers: string[]): Mapping {
     actionTopic: 'command|action|joint_cmd',
     gripTopic: 'gripper',
     cameraTopics: 'image|camera|rgb',
+    angles: 'auto',
   }
 }
 
@@ -175,6 +178,9 @@ export function parseSuccess(raw: string): boolean | null {
   if (/^(false|0|0\.0|no|n|fail|failed|failure|error)$/.test(s)) return false
   return null
 }
+
+/** Task strings, minus the literal wrapping quotes some LeRobot exports keep ("\"Pick the lego...\""). */
+export const cleanText = (s: string) => s.trim().replace(/^"(.*)"$/s, '$1').trim()
 
 const num = (s: string) => { const t = s.trim(); return t === '' ? NaN : Number(t) }
 
@@ -215,7 +221,7 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
       const id = epOf(r)
       if (!id) return skip(line, 'Missing episode id')
       const meta: Meta = {}
-      if (iTask >= 0 && r[iTask]) meta.task = r[iTask].trim()
+      if (iTask >= 0 && r[iTask]) meta.task = cleanText(r[iTask])
       if (iOp >= 0 && r[iOp]) meta.operator = r[iOp].trim()
       if (iS >= 0) { meta.success = parseSuccess(r[iS]); if (r[iS].trim() && meta.success === null) issue(line, 'warn', `Success value "${r[iS]}" not understood; left unlabelled`) }
       if (tagCols.length) meta.tags = tagCols.flatMap(i => (r[i] ?? '').split(/[;|]/)).map(s => s.trim()).filter(Boolean)
@@ -293,7 +299,7 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
       if (iGC >= 0) { const g = num(r[iGC]); if (Number.isFinite(g)) row.gc = g }
     }
     if (eeCols.length === 3) { const v = numsAt(r, eeCols); if (v.every(Number.isFinite)) row.ee = v }
-    if (iTask >= 0 && r[iTask] && !a.task) a.task = r[iTask].trim()
+    if (iTask >= 0 && r[iTask] && !a.task) a.task = (t.headers[iTask] === 'task_index' ? 'task ' : '') + cleanText(r[iTask])
     if (iOp >= 0 && r[iOp] && !a.op) a.op = r[iOp].trim()
     if (iS >= 0 && r[iS].trim()) a.s = parseSuccess(r[iS])
     a.rows.push(row)
@@ -303,6 +309,15 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
   const gMax = Math.max(0, ...[...acc.values()].flatMap(a => a.rows.map(r => r.g ?? 0)))
   if (gMax > 1.05) issue(0, 'warn', `Gripper values go up to ${+gMax.toFixed(3)}; scaled so ${+gMax.toFixed(3)} = fully open`)
   const gScale = gMax > 1.05 ? gMax : 1
+
+  // Angle units: LeRobot Koch / SO-100 exports store joints in degrees; the checks work in radians.
+  const qMax = Math.max(0, ...[...acc.values()].flatMap(a => a.rows.map(r => r.q.reduce((m, x) => Math.max(m, Math.abs(x)), 0))))
+  const deg = m.angles === 'deg' || (m.angles !== 'rad' && qMax > 2 * Math.PI + 0.5)
+  if (deg) {
+    const k = Math.PI / 180
+    for (const a of acc.values()) for (const r of a.rows) { r.q = r.q.map(x => x * k); if (r.a) r.a = r.a.map(x => x * k) }
+    if (m.angles !== 'deg') issue(0, 'warn', `Joint values reach ${+qMax.toFixed(1)}, so they were read as degrees and converted to radians. Set angle units to radians if that is wrong.`)
+  }
 
   for (const a of acc.values()) {
     let rows = a.rows

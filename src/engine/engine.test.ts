@@ -1,8 +1,9 @@
 import { test } from 'node:test'
+import { readFileSync } from 'node:fs'
 import assert from 'node:assert/strict'
-import { analyzeEpisode, balance, defaultConfig, detectGrasps, dtw, dupClusters, jerkSeries, nearDuplicates, operatorFeedback, operatorStats, sliceEpisode, streamStats } from './analyze.ts'
+import { analyzeEpisode, balance, DEFAULT_TH, defaultConfig, detectGrasps, dtw, dupClusters, jerkSeries, nearDuplicates, operatorFeedback, operatorStats, sliceEpisode, streamStats, suggestJerkLimit } from './analyze.ts'
 import { curate, decisionsCsv, decisionsJson, diffVersions, makeVersion, matches, type Rule } from './curate.ts'
-import { autoMap, build, camerasCsv, detectKind, episodesJsonl, expandArrays, framesCsv, merge, parseCsv, parseJsonl, parseStamp, readTable, resolveCols } from './parse.ts'
+import { autoMap, build, camerasCsv, cleanText, detectKind, episodesJsonl, expandArrays, framesCsv, merge, parseCsv, parseJsonl, parseStamp, readTable, resolveCols } from './parse.ts'
 import { generateSample, PLANTED_DUPES, SAMPLE_COUNT } from './sample.ts'
 import type { Episode, EpisodeStats } from './types.ts'
 
@@ -359,4 +360,92 @@ test('scrubber prefix: slicing keeps streams consistent and the score only refle
   assert.ok(Object.values(half.cams).every(c => c.every(x => x <= 4)))
   const full = analyzeEpisode(ep, cfg), early = analyzeEpisode(sliceEpisode(ep, 0.5), cfg)
   assert.ok(early.issues.length < full.issues.length)
+})
+
+// ---------- Real public LeRobot data ----------
+// Excerpts of lerobot/koch_pick_place_1_lego (Apache-2.0) and lerobot/aloha_sim_insertion_human (MIT),
+// fetched from the Hugging Face dataset viewer API. The Koch file is written the way pandas to_csv writes it.
+const fx = (n: string) => readFileSync(new URL(`./fixtures/${n}`, import.meta.url), 'utf8')
+const load = (n: string, map?: Partial<ReturnType<typeof autoMap>>) => {
+  const t = readTable(n, fx(n))
+  const m = { ...autoMap(t.headers), ...map }
+  return { t, m, kind: detectKind(t.headers, m), b: build(t, detectKind(t.headers, m), m, n) }
+}
+
+test('real Koch pandas CSV: array cells split, 2 episodes at 30 Hz, no drops', () => {
+  const { m, kind, b } = load('koch_pick_place_1_lego.csv')
+  assert.equal(kind, 'frames')
+  assert.equal(m.joints, 'observation.state.*')
+  assert.equal(m.action, 'action.*')
+  assert.equal(b.skipped, 0)
+  assert.deepEqual(b.episodes.map(e => [e.id, e.t.length, e.q[0].length, e.act?.[0].length]), [['0', 445, 6, 6], ['1', 150, 6, 6]])
+  const s = analyzeEpisode(b.episodes[0], cfg)
+  assert.ok(Math.abs(s.joints.hz - 30) < 0.01)
+  assert.equal(s.dropRate, 0)
+})
+
+test('Koch joints are stored in degrees: detected and converted to radians', () => {
+  const { b } = load('koch_pick_place_1_lego.csv')
+  assert.ok(b.issues.some(i => /read as degrees/.test(i.message)))
+  const e = b.episodes[0]
+  // Raw first frame: motor_1 = 40.693359375 deg
+  assert.ok(Math.abs(e.q[0][1] - 40.693359375 * Math.PI / 180) < 1e-9)
+  assert.ok(e.q.every(r => r.every(x => Math.abs(x) < Math.PI)))
+  assert.ok(Math.abs(e.act![0][1] - 42.099609375 * Math.PI / 180) < 1e-9, 'actions converted with the joints')
+  const raw = load('koch_pick_place_1_lego.csv', { angles: 'rad' }).b
+  assert.equal(raw.episodes[0].q[0][1], 40.693359375)
+  assert.ok(!raw.issues.some(i => /degrees/.test(i.message)))
+})
+
+test('radian data near ±2π is not mistaken for degrees', () => {
+  const rows = ['episode,timestamp,q0,q1', ...Array.from({ length: 10 }, (_, k) => `a,${k / 30},${(6.5 * k / 9).toFixed(3)},0.1`)]
+  const t = parseCsv(rows.join('\n'))
+  const b = build(t, 'frames', autoMap(t.headers))
+  assert.equal(b.episodes[0].q[9][0], 6.5)
+})
+
+test('real ALOHA JSONL: 14 joints in radians at 50 Hz', () => {
+  const { kind, b } = load('aloha_sim_insertion_human.jsonl')
+  assert.equal(kind, 'frames')
+  assert.equal(b.episodes.length, 1)
+  const e = b.episodes[0]
+  assert.equal(e.q[0].length, 14)
+  assert.equal(e.q[0][1], -0.9599999785423279)
+  assert.ok(!b.issues.some(i => /degrees/.test(i.message)))
+  assert.ok(Math.abs(analyzeEpisode(e, cfg).joints.hz - 50) < 0.01)
+})
+
+test('task_index frames get real task text from LeRobot episodes.jsonl, wrapping quotes stripped', () => {
+  const frames = load('koch_pick_place_1_lego.csv').b
+  assert.equal(frames.episodes[0].task, 'task 0')
+  const meta = load('koch_pick_place_1_lego.episodes.jsonl')
+  assert.equal(meta.kind, 'episodes')
+  const { ds, report } = merge(frames.episodes, meta.b)
+  assert.equal(report.metaAttached, 2)
+  assert.deepEqual(report.unmatched, ['2'])
+  assert.equal(ds[0].task, 'Pick the lego blocks and place them in the box')
+  assert.equal(cleanText('"cube to bin"'), 'cube to bin')
+  assert.equal(cleanText('say "hi" twice'), 'say "hi" twice')
+})
+
+test('saturation is skipped when the limits are for a different joint count', () => {
+  const e = load('aloha_sim_insertion_human.jsonl').b.episodes[0]
+  assert.equal(analyzeEpisode(e, cfg).satFrac, 0, '7 generic limits vs 14 joints')
+  const wide = { ...cfg, limits: e.q[0].map((_, i) => ({ name: `j${i}`, min: -10, max: 10, vel: 100 })) }
+  assert.equal(analyzeEpisode(e, wide).satFrac, 0)
+  // Clamp joint 1 (left shoulder, sits at -0.96 rad) so it is always at its lower limit.
+  const tight = { ...wide, limits: wide.limits.map((l, i) => i === 1 ? { ...l, min: -0.96, max: 1 } : l) }
+  const s = analyzeEpisode(e, tight)
+  assert.ok(s.satFrac > 0 && s.satJoints.includes(1))
+})
+
+test('jerk limit fitted to real Koch data flags only outliers', () => {
+  const eps = load('koch_pick_place_1_lego.csv').b.episodes
+  const fit = suggestJerkLimit(eps)!
+  assert.ok(fit > DEFAULT_TH.jerkLimit, `Koch encoder steps need a higher limit than the default, got ${fit}`)
+  const before = eps.reduce((a, e) => a + analyzeEpisode(e, cfg).jerkEvents, 0)
+  const after = eps.reduce((a, e) => a + analyzeEpisode(e, { ...cfg, th: { ...cfg.th, jerkLimit: fit } }).jerkEvents, 0)
+  assert.ok(before >= 10, `default flags many: ${before}`)
+  assert.ok(after <= 3, `fitted flags few: ${after}`)
+  assert.equal(suggestJerkLimit([]), null)
 })

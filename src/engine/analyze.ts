@@ -179,9 +179,11 @@ export function analyzeEpisode(ep: Episode, cfg: Config): EpisodeStats {
   // Saturation against user-entered limits
   const vel = velocities(t, q, js.period, th.dropFactor)
   const satJ = new Set<number>()
+  // Limits entered for a different arm (count mismatch) would flag every frame, so saturation waits until they match.
+  const limitsFit = limits.length === (q[0]?.length ?? 0)
   const satFlag = q.map((row, k) => {
     let hit = false
-    for (let j = 0; j < row.length && j < limits.length; j++) {
+    if (limitsFit) for (let j = 0; j < row.length; j++) {
       const L = limits[j]
       const margin = (L.max - L.min) * th.satMargin
       if (row[j] <= L.min + margin || row[j] >= L.max - margin || Math.abs(vel[k][j]) >= 0.98 * L.vel) { hit = true; satJ.add(j) }
@@ -354,4 +356,16 @@ export function scoreHistogram(stats: EpisodeStats[]): number[] {
   const h = new Array(10).fill(0)
   for (const s of stats) h[Math.min(9, Math.floor(s.score / 10))]++
   return h
+}
+
+/** A jerk threshold fitted to the data: twice the median of each episode's 99th-percentile jerk, so only outliers for this robot count as snaps. */
+export function suggestJerkLimit(eps: Episode[], factor = DEFAULT_TH.dropFactor): number | null {
+  const p99s = eps.map(e => {
+    const j = jerkSeries(e.t, e.act ?? e.q, streamStats('x', e.t, factor).period, factor).filter(Number.isFinite).sort((a, b) => a - b)
+    return j.length ? j[Math.floor(0.99 * (j.length - 1))] : NaN
+  }).filter(Number.isFinite)
+  if (!p99s.length) return null
+  const v = 2 * median(p99s)
+  const mag = 10 ** Math.floor(Math.log10(v) - 1)
+  return Math.max(10, Math.round(v / mag) * mag)
 }

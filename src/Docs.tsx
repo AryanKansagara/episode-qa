@@ -1,12 +1,17 @@
 import { Code, Link } from './ui.tsx'
 
-const LEROBOT = `# LeRobot v2 datasets store frames as parquet. One line per file to CSV:
-python -c "import pandas as pd, glob; [pd.read_parquet(f).to_csv(f.replace('.parquet','.csv'), index=False) for f in glob.glob('data/chunk-*/episode_*.parquet')]"
-
-# Or one CSV for the whole dataset:
+const LEROBOT = `# LeRobot stores frames as parquet: data/chunk-000/episode_000000.parquet (v2.x)
+# or data/chunk-000/file-000.parquet (v3.0). One CSV for the whole dataset:
 python -c "import pandas as pd, glob; pd.concat(pd.read_parquet(f) for f in sorted(glob.glob('data/chunk-*/*.parquet'))).to_csv('frames.csv', index=False)"
 
-# Episode metadata (task, length) is already JSONL: drop meta/episodes.jsonl as is.`
+# No Python? Any public Hub dataset as JSONL through the Hugging Face dataset viewer API
+# (100 rows per request; raise offset until you have the episodes you want):
+for o in 0 100 200 300 400; do
+  curl -s "https://datasets-server.huggingface.co/rows?dataset=lerobot/koch_pick_place_1_lego&config=default&split=train&offset=$o&length=100" | jq -c '.rows[].row'
+done > frames.jsonl
+
+# Task names: v2.x has meta/episodes.jsonl, drop it as is. v3.0 keeps them in parquet:
+python -c "import pandas as pd, glob; pd.concat(pd.read_parquet(f) for f in glob.glob('meta/episodes/*/*.parquet'))[['episode_index','tasks','length']].to_json('episodes.jsonl', orient='records', lines=True)"`
 
 const FRAMES = `episode_index,frame_index,timestamp,observation.state.0,...,observation.state.6,action.0,...,action.6,observation.gripper,action.gripper,observation.ee_pos.0,observation.ee_pos.1,observation.ee_pos.2,operator,task,success
 ep_000,0,0.0000,-0.0841,...,0.5123,-0.0839,...,0.5125,1.0000,0,0.45000,0.00000,0.42000,op-ana,cube to bin,true
@@ -57,6 +62,8 @@ export default function Docs() {
       <h2 id="convert">LeRobot and other parquet datasets</h2>
       <p>Parquet is not read in the browser. Convert once with pandas (already a LeRobot dependency):</p>
       <Code label="shell" code={LEROBOT} />
+      <p>Joint units are read as they are stored. Koch and SO-100 datasets record motor angles in degrees; values beyond &plusmn;2&pi; are detected as degrees and converted to radians (override with the angle units option on import). Frame tables that only carry <code>task_index</code> show &ldquo;task 0&rdquo; until you drop <code>episodes.jsonl</code>, which fills in the task text.</p>
+      <p>The importer is tested against real public exports: the first episodes of <a href="https://huggingface.co/datasets/lerobot/koch_pick_place_1_lego">lerobot/koch_pick_place_1_lego</a> (Apache-2.0, 6 motors in degrees, 30 Hz) and <a href="https://huggingface.co/datasets/lerobot/aloha_sim_insertion_human">lerobot/aloha_sim_insertion_human</a> (MIT, 14 joints in radians, 50 Hz), both as JSONL from the dataset viewer API and as pandas <code>to_csv</code> output with array cells, plus their v2.1 <code>meta/episodes.jsonl</code> (fetched November 2026). On that data the default 250 rad/s&sup3; jerk limit flags a dozen spikes per Koch episode, because leader-arm encoder steps are jerky at 30 Hz; use &ldquo;fit to this data&rdquo; under Thresholds to set the limit from your own dataset.</p>
       <p>LeRobot videos are decoded at <code>frame_index / fps</code>, so they cannot drift relative to the state by construction. If your logger records real camera capture stamps, export them as a camera timestamp file (below); that is where drift shows up.</p>
 
       <h2 id="ros">ROS bags</h2>
@@ -71,8 +78,8 @@ export default function Docs() {
       <ul>
         <li><strong>Sample rate and dropped frames</strong>: period = median gap between timestamps. Any gap above 1.5 periods counts as round(gap / period) &minus; 1 missing frames. Drop rate = missing / (received + missing), per stream; the episode takes its worst stream.</li>
         <li><strong>Sync offset and drift</strong>: start and end offsets of each camera against the joint clock; drift = change in offset per second of episode. Flagged above the offset warning (default 25 ms, roughly one frame at 30 Hz plus jitter).</li>
-        <li><strong>Jerk</strong>: third difference of commanded targets (measured positions if there are none) divided by period³, max over joints. Windows that span a dropped gap are skipped so drops do not look like jerk. Spikes within 0.2 s merge into one event.</li>
-        <li><strong>Saturation</strong>: a frame is saturated when any joint is within the margin (1% of its range) of a limit or at 98% of its speed limit. Enter your arm&rsquo;s limits on the Data tab; the defaults are a generic 7-DoF arm.</li>
+        <li><strong>Jerk</strong>: third difference of commanded targets (measured positions if there are none) divided by period³, max over joints. Windows that span a dropped gap are skipped so drops do not look like jerk. Spikes within 0.2 s merge into one event. The default limit suits a smooth 30 Hz arm; &ldquo;fit to this data&rdquo; sets it to twice the median of each episode&rsquo;s 99th-percentile jerk, so only outliers for your robot count.</li>
+        <li><strong>Saturation</strong>: skipped while the number of limits differs from the number of joint columns, because limits for another arm would flag every frame. A frame is saturated when any joint is within the margin (1% of its range) of a limit or at 98% of its speed limit. Enter your arm&rsquo;s limits on the Data tab; the defaults are a generic 7-DoF arm.</li>
         <li><strong>Idle</strong>: fastest joint speed on a 5-frame moving average below 0.03 rad/s for at least 1.5 s. Idle touching the start or end becomes a trim range (keeping 0.25 s of padding).</li>
         <li><strong>Grasps</strong>: each rising edge of the gripper command is a grasp. After the settle time (0.4 s) an opening below 0.06 means the fingers closed on nothing (missed); if it later falls below 0.06 while still commanded closed, the object slipped. An episode labelled success whose last judged grasp failed is flagged.</li>
         <li><strong>Near-duplicates</strong>: end-effector paths (or the first three joints) are downsampled to 32 points and compared by dynamic time warping within each task. Mean step distance at or below 6 mm is a duplicate; the best-scoring copy is kept.</li>

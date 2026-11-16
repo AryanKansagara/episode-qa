@@ -96,7 +96,7 @@ export default function DataTab({ project, ds, d }: TabProps) {
 
       <div className="panel">
         <div className="panel-head"><h2>Joint limits and thresholds</h2><span className="muted small">{ds.length ? 'Changes re-run every check instantly' : project.stats.length ? 'Raw frames are not on this device: only the duplicate distance takes effect until you re-import' : 'Used when you import'}</span></div>
-        <ConfigEditor cfg={project.config} onChange={setConfig} />
+        <ConfigEditor cfg={project.config} onChange={setConfig} eps={ds} />
       </div>
 
       {project.imports.length > 0 && (
@@ -165,6 +165,13 @@ function PendingFile({ p, onChange, onCancel, onCommit }: { p: Pending; onChange
             </label>
           )
         })}
+        {(p.kind === 'frames' || p.kind === 'ros') && (
+          <label className="field"><span>Joint angle units</span>
+            <select value={p.map.angles ?? 'auto'} onChange={e => onChange({ ...p, map: { ...p.map, angles: e.target.value as Mapping['angles'] } })}>
+              <option value="auto">Auto (degrees if beyond ±2π)</option><option value="rad">Radians</option><option value="deg">Degrees (Koch, SO-100)</option>
+            </select>
+          </label>
+        )}
         {p.kind === 'ros' && TOPICS.map(([k, label]) => <label key={k} className="field"><span>{label} (regex)</span><input value={p.map[k]} onChange={e => setMap(k, e.target.value)} /></label>)}
       </div>
       <h3 className="small strong" style={{ marginTop: 8 }}>Validation</h3>
