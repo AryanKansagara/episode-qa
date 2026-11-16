@@ -17,7 +17,9 @@ const TH_FIELDS: [keyof Thresholds, string, string, number][] = [
 export function ConfigEditor({ cfg, onChange, eps = [] }: { cfg: Config; onChange(c: Config): void; eps?: Episode[] }) {
   const nJ = eps[0]?.q[0]?.length ?? 0
   const jerkFit = useMemo(() => suggestJerkLimit(eps), [eps])
-  const fitJoints = () => onChange({ ...cfg, limits: Array.from({ length: nJ }, (_, i) => cfg.limits[i] ?? { name: `j${i + 1}`, min: -3.14, max: 3.14, vel: 3.14 }) })
+  // Untouched generic 7-DoF limits do not describe another arm, so start from open placeholders; entered limits are kept.
+  const generic = JSON.stringify(cfg.limits) === JSON.stringify(DEFAULT_LIMITS)
+  const fitJoints = () => onChange({ ...cfg, limits: Array.from({ length: nJ }, (_, i) => (!generic && cfg.limits[i]) || { name: `j${i + 1}`, min: -3.14, max: 3.14, vel: 3.14 }) })
   const setTh = (k: keyof Thresholds, v: number) => { if (Number.isFinite(v) && v >= 0) onChange({ ...cfg, th: { ...cfg.th, [k]: v } }) }
   const setL = (i: number, patch: Partial<JointLimit>) => onChange({ ...cfg, limits: cfg.limits.map((l, j) => j === i ? { ...l, ...patch } : l) })
   return (
@@ -25,7 +27,7 @@ export function ConfigEditor({ cfg, onChange, eps = [] }: { cfg: Config; onChang
       <h3 className="small strong">Joint limits</h3>
       <p className="muted small">From your arm&rsquo;s datasheet, in radians and rad/s, in the same order as your joint columns. The defaults are a generic 7-DoF arm; replace them.</p>
       {nJ > 0 && nJ !== cfg.limits.length && (
-        <div className="banner warn"><span><strong>Limits cover {cfg.limits.length} joints, the data has {nJ}.</strong> Saturation is skipped until they match.</span>
+        <div className="banner warn"><span><strong>Limits cover {cfg.limits.length} joints, the data has {nJ}.</strong> Saturation is skipped until they match. {generic ? 'The generic 7-DoF limits are replaced with open ±3.14 rad placeholders; enter your arm\u2019s values.' : 'Your entered limits are kept.'}</span>
           <button type="button" className="btn sm" onClick={fitJoints}>Use {nJ} joints</button></div>
       )}
       <div className="table-wrap">

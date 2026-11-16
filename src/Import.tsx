@@ -139,8 +139,8 @@ function PendingFile({ p, onChange, onCancel, onCommit }: { p: Pending; onChange
     <div className="panel">
       <div className="panel-head">
         <h2 className="break">{p.name}</h2>
-        <label className="row gap-sm small">Format
-          <select value={p.kind} style={{ width: 'auto' }} onChange={e => onChange({ ...p, kind: e.target.value as Kind })}>
+        <label className="row gap-sm small" style={{ maxWidth: "100%" }}>Format
+          <select value={p.kind} style={{ width: "auto", maxWidth: "100%", minWidth: 0 }} onChange={e => onChange({ ...p, kind: e.target.value as Kind })}>
             {(Object.keys(KINDS) as Kind[]).map(k => <option key={k} value={k}>{KINDS[k]}</option>)}
           </select>
         </label>
@@ -150,17 +150,17 @@ function PendingFile({ p, onChange, onCancel, onCommit }: { p: Pending; onChange
       <div className="map-grid">
         {SCALARS[p.kind].map(([k, label, req]) => (
           <label key={k} className="field"><span>{label}{req ? ' *' : ''}</span>
-            <select value={p.map[k]} onChange={e => setMap(k, e.target.value)}>
+            <select value={p.map[k] ?? ""} onChange={e => setMap(k, e.target.value)}>
               <option value="">Not mapped</option>
               {p.table.headers.filter(h => h !== '__error').map(h => <option key={h} value={h}>{h}</option>)}
             </select>
           </label>
         ))}
         {VECTORS[p.kind].map(([k, label]) => {
-          const cols = resolveCols(p.table.headers, p.map[k])
+          const cols = resolveCols(p.table.headers, p.map[k] ?? "")
           return (
             <label key={k} className="field"><span>{label}</span>
-              <input value={p.map[k]} onChange={e => setMap(k, e.target.value)} placeholder="observation.state.* or q0,q1,q2" />
+              <input value={p.map[k] ?? ""} onChange={e => setMap(k, e.target.value)} placeholder="observation.state.* or q0,q1,q2" />
               <small className="muted tiny break">{cols.length ? `${cols.length} columns: ${cols.slice(0, 4).join(', ')}${cols.length > 4 ? ' …' : ''}` : 'No columns match'}</small>
             </label>
           )
@@ -172,7 +172,7 @@ function PendingFile({ p, onChange, onCancel, onCommit }: { p: Pending; onChange
             </select>
           </label>
         )}
-        {p.kind === 'ros' && TOPICS.map(([k, label]) => <label key={k} className="field"><span>{label} (regex)</span><input value={p.map[k]} onChange={e => setMap(k, e.target.value)} /></label>)}
+        {p.kind === 'ros' && TOPICS.map(([k, label]) => <label key={k} className="field"><span>{label} (regex)</span><input value={p.map[k] ?? ""} onChange={e => setMap(k, e.target.value)} /></label>)}
       </div>
       <h3 className="small strong" style={{ marginTop: 8 }}>Validation</h3>
       <p className="small">
