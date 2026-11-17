@@ -38,4 +38,4 @@ npm run build
 
 Live: https://episode-qa.vercel.app
 
-Built by Aryan Kansagara. Independent project, not affiliated with Sanctuary AI.
+Built by Aryan Kansagara.

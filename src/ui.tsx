@@ -289,7 +289,7 @@ export function Footer() {
       <div className="footer-inner">
         <div className="footer-brand"><Monogram /> <strong>Episode QA</strong></div>
         <nav className="footer-nav" aria-label="Footer"><Link href="/app">Datasets</Link><Link href="/docs">Docs</Link><Link href="/settings">Settings</Link></nav>
-        <p>Built by Aryan Kansagara. Independent project, not affiliated with Sanctuary AI.</p>
+        <p>Built by Aryan Kansagara.</p>
         <p className="muted small">The sample dataset is synthetic. Your logs are parsed in your browser and stored on this device unless you sign in to sync.</p>
       </div>
     </footer>
