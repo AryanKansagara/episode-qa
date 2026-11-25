@@ -70,7 +70,8 @@ export function velocities(t: number[], q: number[][], period: number, factor: n
 export function jerkSeries(t: number[], x: number[][], period: number, factor: number): number[] {
   const p3 = period ** 3
   return x.map((row, k) => {
-    if (k < 3 || t[k] - t[k - 3] > 3 * factor * period) return NaN
+    // Each gap on its own: one dropped frame makes a 4-period window, which the sum would let through.
+    if (k < 3 || [k, k - 1, k - 2].some(i => t[i] - t[i - 1] > factor * period)) return NaN
     let m = 0
     for (let j = 0; j < row.length; j++) {
       const v = Math.abs(row[j] - 3 * x[k - 1][j] + 3 * x[k - 2][j] - x[k - 3][j]) / p3
