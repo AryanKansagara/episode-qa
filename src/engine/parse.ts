@@ -1,3 +1,4 @@
+import { median } from './analyze.ts'
 import type { Episode } from './types.ts'
 
 export interface Table {
@@ -139,6 +140,8 @@ export interface Mapping {
   cameraTopics: string
   /** Joint and action angle units: auto treats values beyond ±2π as degrees. */
   angles?: 'auto' | 'rad' | 'deg'
+  /** Unit of plain-number timestamps: auto finds one unit for the whole column. */
+  stamps?: 'auto' | StampUnit
 }
 
 const natural = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true })
@@ -177,6 +180,7 @@ export function autoMap(headers: string[]): Mapping {
     gripTopic: 'gripper',
     cameraTopics: 'image|camera|rgb',
     angles: 'auto',
+    stamps: 'auto',
   }
 }
 
@@ -189,12 +193,18 @@ export function detectKind(headers: string[], m = autoMap(headers)): Kind {
 
 // ---------- Values ----------
 
-/** Seconds from numbers in s, ms, us or ns (by magnitude), or ISO 8601 strings. */
-export function parseStamp(raw: string): number {
+export type StampUnit = 's' | 'ms' | 'us' | 'ns'
+const PER_SEC: Record<StampUnit, number> = { s: 1, ms: 1e3, us: 1e6, ns: 1e9 }
+export const UNIT_NAME: Record<StampUnit, string> = { s: 'seconds', ms: 'milliseconds', us: 'microseconds', ns: 'nanoseconds' }
+const NUMBER = /^-?\d+(\.\d+)?(e[+-]?\d+)?$/i
+
+/** Seconds from numbers (in `unit`, or s, ms, us or ns by magnitude), or ISO 8601 strings. */
+export function parseStamp(raw: string, unit?: StampUnit): number {
   const s = raw.trim()
   if (!s) return NaN
-  if (/^-?\d+(\.\d+)?(e[+-]?\d+)?$/i.test(s)) {
+  if (NUMBER.test(s)) {
     const n = Number(s)
+    if (unit) return n / PER_SEC[unit]
     const a = Math.abs(n)
     return a > 1e17 ? n / 1e9 : a > 1e14 ? n / 1e6 : a > 1e11 ? n / 1e3 : n
   }
@@ -204,6 +214,46 @@ export function parseStamp(raw: string): number {
   const d = Date.parse(s)
   return Number.isNaN(d) ? NaN : d / 1000
 }
+
+/** Typical gap between stamps that follow each other, sorted first when many of them go back in time. */
+function typicalGap(ts: number[]): number {
+  const back = ts.filter((x, i) => i > 0 && x < ts[i - 1]).length
+  const l = back > ts.length / 10 ? [...ts].sort((a, b) => a - b) : ts
+  return median(l.slice(1).map((x, i) => x - l[i]).filter(d => d > 0))
+}
+/** Units whose sample rate for this gap would be about 0.5 Hz to 2 kHz. */
+const unitOfGap = (g: number): StampUnit => g < 2 ? 's' : g < 500 ? 'ms' : g < 5e5 ? 'us' : 'ns'
+/** Gaps that two units explain equally well (1 could be 1 s or 1 ms), or none does. */
+const unclearGap = (g: number) => (g >= 0.5 && g < 2) || (g > 250 && g < 2000) || (g > 2.5e5 && g < 2e6) || g > 1e9
+/** Epoch stamps between 2001 and 2100 in each unit. */
+const isEpoch = (n: number) => (Object.values(PER_SEC)).some(k => n >= 978e6 * k && n < 4102e6 * k)
+
+/**
+ * One unit for the plain numbers of a timestamp column. Epoch values tell by their size; values relative to a start
+ * tell by the typical gap within a stream. `unit` is undefined when every value is read by its own size.
+ */
+export function stampUnit(streams: Iterable<string[]>): { unit?: StampUnit; warn?: string } {
+  const nums = [...streams].map(l => l.map(x => x.trim()).filter(x => NUMBER.test(x)).map(Number)).filter(l => l.length)
+  const gaps = nums.map(typicalGap).filter(g => g > 0)
+  if (!gaps.length) return {}
+  const gap = median(gaps)
+  if (nums.every(l => l.every(isEpoch))) {
+    const secs = median(nums.map(l => typicalGap(l.map(x => parseStamp(String(x))))).filter(g => g > 0))
+    // Uptime clocks can fall in the epoch range, but then their gaps would be minutes or hours.
+    if (secs <= 10) {
+      const units = new Set(nums.flatMap(l => l.map(bySize)))
+      return units.size > 1 ? { warn: `Timestamps mix units (${[...units].map(u => UNIT_NAME[u]).join(', ')}); each was read by its size. Set the timestamp unit if that is wrong.` }
+        : secs > 2 ? { warn: `Timestamps were read as ${UNIT_NAME[[...units][0]]} since 1970, which puts frames ${+secs.toPrecision(3)} s apart. Set the timestamp unit if that is wrong.` } : {}
+    }
+  }
+  const unit = unitOfGap(gap)
+  const per = `${+(gap / PER_SEC[unit]).toPrecision(3)} s apart`
+  const others = [...new Set(gaps.filter(g => !unclearGap(g)).map(unitOfGap))].filter(u => u !== unit)
+  if (others.length) return { unit, warn: `Timestamps were all read as ${UNIT_NAME[unit]}, but some episodes look like ${others.map(u => UNIT_NAME[u]).join(' or ')}. Import them separately or set the timestamp unit.` }
+  if (unclearGap(gap)) return { unit, warn: `The timestamp unit is unclear: read as ${UNIT_NAME[unit]}, frames are ${per}. Set the timestamp unit if that is wrong.` }
+  return unit === 's' ? { unit } : { unit, warn: `Timestamps were read as ${UNIT_NAME[unit]} (frames ${per}). Set the timestamp unit if that is wrong.` }
+}
+const bySize = (n: number): StampUnit => n > 1e17 ? 'ns' : n > 1e14 ? 'us' : n > 1e11 ? 'ms' : 's'
 
 export function parseSuccess(raw: string): boolean | null {
   const s = raw.trim().toLowerCase()
@@ -271,12 +321,26 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
   }
 
   if (iT < 0) { issue(0, 'error', 'Map the timestamp column.'); return out }
+  let unit = m.stamps === 'auto' ? undefined : m.stamps
+  if (!unit) {
+    // Camera and topic columns: each has its own rate, so its gaps are its own.
+    const iStream = kind === 'cameras' ? col(m.camera) : kind === 'ros' ? col(m.topic) : -1
+    const streams = new Map<string, string[]>()
+    for (const r of t.rows) {
+      const key = JSON.stringify([epOf(r), iStream >= 0 ? r[iStream] : ''])
+      const l = streams.get(key)
+      if (l) l.push(r[iT] ?? ''); else streams.set(key, [r[iT] ?? ''])
+    }
+    const found = stampUnit(streams.values())
+    unit = found.unit
+    if (found.warn) issue(0, 'warn', found.warn)
+  }
 
   if (kind === 'cameras') {
     const iC = col(m.camera)
     t.rows.forEach((r, k) => {
       const line = t.lines[k]
-      const id = epOf(r), ts = parseStamp(r[iT] ?? '')
+      const id = epOf(r), ts = parseStamp(r[iT] ?? '', unit)
       if (!id) return skip(line, 'Missing episode id')
       if (!Number.isFinite(ts)) return skip(line, `Timestamp "${r[iT]}" is not a number or ISO date`)
       const cam = iC >= 0 ? r[iC].trim() || 'camera' : 'camera'
@@ -309,7 +373,7 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
     if (errCol >= 0 && r[errCol]) return skip(line, r[errCol])
     const id = epOf(r)
     if (!id) return skip(line, 'Missing episode id')
-    const ts = parseStamp(r[iT] ?? '')
+    const ts = parseStamp(r[iT] ?? '', unit)
     if (!Number.isFinite(ts)) return skip(line, `Timestamp "${r[iT] ?? ''}" is not a number or ISO date`)
     const a = get(id, line)
     if (kind === 'ros') {

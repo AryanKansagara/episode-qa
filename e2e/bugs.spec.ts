@@ -63,7 +63,6 @@ test('#7 blank metadata does not erase a failure label', async ({ page }) => {
 })
 
 test('#8 relative milliseconds are not read as seconds', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   await importFiles(page, { name: 'ms.csv', text: 'episode_index,timestamp,q0,q1\n' + Array.from({ length: 31 }, (_, k) => `A,${k * 100},${0.1 * k},0`).join('\n') })
   await openTab(page, 'Overview')

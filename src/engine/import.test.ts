@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { autoMap, build, detectKind, merge, parseCsv, readTable } from './parse.ts'
+import { autoMap, build, detectKind, merge, parseCsv, parseStamp, readTable } from './parse.ts'
 import type { Episode } from './types.ts'
 
 const imp = (text: string, name = 'f.csv') => { const t = readTable(name, text); const m = autoMap(t.headers); return build(t, detectKind(t.headers, m), m, name) }
@@ -92,4 +92,49 @@ test('an unreadable success value in frames is warned about once and does not re
   const b = imp('episode_index,timestamp,q0,q1,success\n' + ['false', '', 'maybe', 'maybe', ''].map((s, k) => `a,${k},0,0,${s}\n`).join(''))
   assert.equal(b.episodes[0].success, false)
   assert.equal(b.issues.filter(i => /not understood/.test(i.message)).length, 1)
+})
+
+const stampFile = (id: string, stamps: (number | string)[]) => imp('episode_index,timestamp,q0,q1\n' + stamps.map(x => `${id},${x},0,0\n`).join(''))
+const hz = (b: ReturnType<typeof imp>) => { const t = b.episodes[0].t; return Math.round((t.length - 1) / t.at(-1)!) }
+
+test('relative ms, us and ns columns are 30 Hz, with a warning that names the unit', () => {
+  for (const [k, name] of [[1e3, 'milliseconds'], [1e6, 'microseconds'], [1e9, 'nanoseconds']] as const) {
+    // 5000 frames: in ns the values pass 1e11, the old per-value limit.
+    const b = stampFile('a', Array.from({ length: 5000 }, (_, i) => Math.floor(i / 30 * k)))
+    assert.equal(hz(b), 30, name)
+    assert.ok(b.issues.some(i => i.level === 'warn' && i.message.includes(name)), name)
+    assert.ok(!b.issues.some(i => /out of order/.test(i.message)), name)
+  }
+  const uptime = stampFile('a', Array.from({ length: 300 }, (_, i) => 2.5e12 + Math.floor(i / 30 * 1e9)))
+  assert.equal(hz(uptime), 30, 'a clock that counts ns since boot')
+})
+
+test('relative seconds and epoch stamps are read as before, without a warning', () => {
+  for (const [start, k] of [[0, 1], [1.7e9, 1], [1.7e9, 1e3], [1.7e9, 1e6], [1.7e9, 1e9]]) {
+    const raw = Array.from({ length: 60 }, (_, i) => k === 1 ? (start + i / 30).toFixed(4) : `${BigInt(start * k) + BigInt(Math.floor(i / 30 * k))}`)
+    const b = stampFile('a', raw)
+    assert.equal(hz(b), 30)
+    assert.deepEqual(b.issues, [], `${start} ${k}`)
+    assert.equal(b.episodes[0].t0, parseStamp(raw[0]))
+  }
+})
+
+test('unclear or mixed timestamp units warn, and the unit can be set', () => {
+  const one = stampFile('a', [0, 1, 2, 3, 4])
+  assert.deepEqual(one.episodes[0].t, [0, 1, 2, 3, 4])
+  assert.match(one.issues[0].message, /unclear/)
+  const csv = 'episode_index,timestamp,q0,q1\n' + [0, 1, 2, 3, 4, 5].flatMap(k => [`a,${k * 33},0,0`, `b,${k * 33}000000,0,0`, `c,${k * 33},0,0`]).join('\n')
+  assert.match(imp(csv).issues[0].message, /all read as milliseconds, but some episodes look like nanoseconds/)
+  assert.match(stampFile('a', [1.7e9, 1.7e9 + 1, 1.7e9 + 2, 1700000000500, 1700000001500]).issues[0].message, /mix units/)
+  const t = readTable('f.csv', 'episode_index,timestamp,q0,q1\n' + [0, 1, 2, 3].map(k => `a,${k},0,0\n`).join(''))
+  const b = build(t, 'frames', { ...autoMap(t.headers), stamps: 'ms' })
+  assert.deepEqual(b.episodes[0].t, [0, 0.001, 0.002, 0.003])
+  assert.deepEqual(b.issues, [])
+})
+
+test('camera files and shuffled rows: gaps are taken per stream', () => {
+  const b = imp('episode_index,camera,timestamp\n' + [0, 1, 2, 3].flatMap(k => [`a,w,${k * 33}`, `a,h,${k * 33 + 1}`]).join('\n'))
+  assert.deepEqual(b.cams.a.w, [0, 0.033, 0.066, 0.099])
+  const n = 300, shuffled = Array.from({ length: n }, (_, i) => ((i * 113) % n) / 30)
+  assert.equal(hz(stampFile('a', shuffled)), 30)
 })
