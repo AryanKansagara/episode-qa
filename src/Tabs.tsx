@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { balance, operatorFeedback, PENALTY_LABELS, scoreHistogram } from './engine/analyze.ts'
+import { balance, operatorFeedback, PENALTY_LABELS, scoreHistogram, wasChecked } from './engine/analyze.ts'
 import { decisionsCsv, decisionsJson, describeRule, diffVersions, FIELD_META, matches, type Override, type Rule, type RuleAction, type RuleField, type RuleOp } from './engine/curate.ts'
 import { own, type EpisodeStats, type IssueKind } from './engine/types.ts'
 import type { Tab, TabProps } from './Project.tsx'
@@ -43,7 +43,8 @@ function Overview({ project, d }: TabProps) {
   const mean = stats.reduce((a, s) => a + s.score, 0) / n
   const hist = scoreHistogram(stats)
   const hmax = Math.max(...hist, 1)
-  const byKind = KINDS.map(k => [k, stats.filter(s => s.issues.some(i => i.kind === k)).length] as const)
+  const ran = (k: IssueKind) => stats.some(s => wasChecked(s, k))
+  const byKind = KINDS.map(k => [k, ran(k) ? stats.filter(s => s.issues.some(i => i.kind === k)).length : null] as const)
   const worst = [...stats].sort((a, b) => a.score - b.score).slice(0, 8)
   const camNames = [...new Set(stats.flatMap(s => s.cams.map(c => c.name)))]
   const med = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[s.length >> 1] : NaN }
@@ -71,7 +72,7 @@ function Overview({ project, d }: TabProps) {
         <div className="kpi"><small>Episodes</small><b>{fmtN(n)}</b><p>{fmtS(hours)} recorded</p></div>
         <div className="kpi"><small>Mean quality score</small><b>{mean.toFixed(0)}</b><p>{stats.filter(s => s.score < 70).length} below 70</p></div>
         <div className="kpi"><small>Kept by current rules</small><b>{keep.size}</b><p>{fmtS(keptHours)} of training data · {fmtPct(keep.size / n)}</p></div>
-        <div className="kpi"><small>Failed grasps</small><b>{stats.reduce((a, s) => a + s.failedGrasps, 0)}</b><p>{stats.filter(s => s.issues.some(i => i.kind === 'label')).length} contradict their success label</p></div>
+        <div className="kpi"><small>Failed grasps</small><b>{ran('grasp') ? stats.reduce((a, s) => a + s.failedGrasps, 0) : '—'}</b><p>{ran('grasp') ? `${stats.filter(s => s.issues.some(i => i.kind === 'label')).length} contradict their success label` : 'not checked'}</p></div>
       </div>
       <div className="grid-2">
         <div className="panel">
@@ -84,7 +85,7 @@ function Overview({ project, d }: TabProps) {
           <div className="panel-head"><h2>Episodes affected</h2><span className="muted small">at least one flag of each kind</span></div>
           <div className="kbars">
             {byKind.map(([k, c]) => (
-              <div key={k} className="kbar"><span>{KIND_LABEL[k]}</span><div className="share"><span style={{ width: `${(c / n) * 100}%`, background: `var(--k-${k})` }} /></div><b className="tab-nums">{c}</b></div>
+              <div key={k} className="kbar"><span>{KIND_LABEL[k]}</span><div className="share"><span style={{ width: `${((c ?? 0) / n) * 100}%`, background: `var(--k-${k})` }} /></div><b className="tab-nums" title={c === null ? 'Not checked' : undefined}>{c ?? '—'}</b></div>
             ))}
           </div>
         </div>
@@ -125,7 +126,7 @@ function Overview({ project, d }: TabProps) {
       <div className="panel">
         <div className="panel-head"><h2>Operators at a glance</h2><Link href={`/app/p/${project.id}/operators`} className="small">Details and feedback</Link></div>
         <div className="op-cards">
-          {ops.map(o => <div key={o.operator} className="op-card"><ScoreRing score={Math.round(o.meanScore)} /><div><b>{o.operator}</b><small className="muted">{o.episodes} episodes · {fmtPct(o.successRate)} success · {fmtPct(o.failedGraspRate)} grasps failed</small></div></div>)}
+          {ops.map(o => <div key={o.operator} className="op-card"><ScoreRing score={Math.round(o.meanScore)} /><div><b>{o.operator}</b><small className="muted">{o.episodes} episodes · {fmtPct(o.successRate)} success · {Number.isFinite(o.failedGraspRate) ? `${fmtPct(o.failedGraspRate)} grasps failed` : 'grasps not checked'}</small></div></div>)}
         </div>
       </div>
     </>
@@ -200,7 +201,7 @@ function Episodes({ project, ds, d, update }: TabProps) {
                 <div><dt>Duration</dt><dd>{s.duration.toFixed(1)} s</dd></div>
                 <div><dt>Joint rate</dt><dd>{s.joints.hz.toFixed(1)} Hz</dd></div>
                 <div><dt>Worst drop rate</dt><dd>{fmtPct(s.dropRate, 1)}</dd></div>
-                <div><dt>Camera offset</dt><dd>{s.syncMs.toFixed(0)} ms</dd></div>
+                <div><dt>Camera offset</dt><dd>{wasChecked(s, 'sync') ? `${s.syncMs.toFixed(0)} ms` : 'not checked'}</dd></div>
               </dl>
             </div>
             <div>
@@ -275,7 +276,7 @@ function Operators({ project, d }: TabProps) {
             </tr>
           ))}</tbody>
         </table></div>
-        <p className="muted small">Score is the mean episode score. Drops and sync usually come from the rig, not the operator; they are listed so you can rule them out.</p>
+        <p className="muted small">Score is the mean episode score. Drops and sync usually come from the rig, not the operator; they are listed so you can rule them out. A dash means the check could not run on this data.</p>
       </div>
       <div className="grid-3">
         {ops.map(o => (

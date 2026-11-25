@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { balance, operatorFeedback, scoreHistogram } from './engine/analyze.ts'
+import { balance, operatorFeedback, scoreHistogram, wasChecked } from './engine/analyze.ts'
 import { describeRule } from './engine/curate.ts'
 import { fmtS, useDerived, useProject } from './projectData.ts'
 import type { Project } from './store.ts'
@@ -72,7 +72,7 @@ function Body({ project, feedback }: { project: Project; feedback: boolean }) {
       </div>
       <h2>Findings</h2>
       <table><thead><tr><th>Check</th><th className="num">Episodes flagged</th><th className="num">Share</th></tr></thead>
-        <tbody>{KINDS.map(k => { const c = stats.filter(s => s.issues.some(i => i.kind === k)).length; return <tr key={k}><td>{KIND_LABEL[k]}</td><td className="num">{c}</td><td className="num">{fmtPct(c / n)}</td></tr> })}
+        <tbody>{KINDS.map(k => { const c = stats.filter(s => s.issues.some(i => i.kind === k)).length; const ran = stats.some(s => wasChecked(s, k)); return <tr key={k}><td>{KIND_LABEL[k]}</td><td className="num">{ran ? c : 'not checked'}</td><td className="num">{ran ? fmtPct(c / n) : '—'}</td></tr> })}
           <tr><td>Near-duplicates (extra copies)</td><td className="num">{d.ctx.dupDrop.size}</td><td className="num">{fmtPct(d.ctx.dupDrop.size / n)}</td></tr></tbody></table>
       <h2>Curation rules in force</h2>
       <ol className="small">{project.rules.filter(r => r.enabled).map(r => <li key={r.id}>{describeRule(r)}</li>)}</ol>

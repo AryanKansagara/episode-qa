@@ -1,4 +1,4 @@
-import type { CamStats, Config, Episode, EpisodeStats, Grasp, Issue, JointLimit, StreamStats, Thresholds } from './types.ts'
+import type { CamStats, Config, Episode, EpisodeStats, Grasp, Issue, IssueKind, JointLimit, StreamStats, Thresholds } from './types.ts'
 
 export const DEFAULT_TH: Thresholds = {
   dropFactor: 1.5, jerkLimit: 250, idleSpeed: 0.03, idleMinSec: 1.5, settleSec: 0.4,
@@ -240,7 +240,7 @@ export function analyzeEpisode(ep: Episode, cfg: Config): EpisodeStats {
   return {
     id: ep.id, task: ep.task, operator: ep.operator, success: ep.success, tags: ep.tags,
     duration, frames: t.length, joints: { name: js.name, frames: js.frames, hz: js.hz, dropped: js.dropped, dropRate: js.dropRate }, cams,
-    dropRate, syncMs, jerkEvents: jerkSpans.length, jerkPeak, satFrac, satJoints: [...satJ].sort(), idleSec, midIdleSec, edgeIdleSec,
+    dropRate, syncMs, jerkEvents: jerkSpans.length, jerkPeak, satFrac, satChecked: limitsFit, satJoints: [...satJ].sort(), idleSec, midIdleSec, edgeIdleSec,
     trim: [trimA, trimB], trimFrames, grasps, failedGrasps: failed.length, issues, penalties, score,
     path: downsample(ep.ee ?? q.map(r => r.slice(0, 3))).map(p => p.map(x => Math.round(x * 1e4) / 1e4)),
   }
@@ -285,6 +285,14 @@ export function dupClusters(pairs: DupPair[], stats: EpisodeStats[], eligible?: 
   return out
 }
 
+/** Whether the data allowed a check to run on this episode. A check that could not run is not a clean result. */
+export function wasChecked(s: EpisodeStats, k: IssueKind): boolean {
+  if (k === 'sync') return s.cams.some(c => c.frames > 0)
+  if (k === 'saturation') return s.satChecked !== false
+  if (k === 'grasp' || k === 'label') return s.grasps.some(g => g.outcome !== 'unknown')
+  return true
+}
+
 export interface OperatorStats {
   operator: string
   episodes: number
@@ -310,6 +318,7 @@ export function operatorStats(stats: EpisodeStats[]): OperatorStats[] {
     const labelled = l.filter(s => s.success !== null)
     const grasps = l.reduce((a, s) => a + s.grasps.filter(g => g.outcome !== 'unknown').length, 0)
     const failed = l.reduce((a, s) => a + s.failedGrasps, 0)
+    const sat = l.filter(s => wasChecked(s, 'saturation'))
     return {
       operator, episodes: l.length, hours: dur / 3600, labelled: labelled.length,
       successRate: labelled.length ? labelled.filter(s => s.success).length / labelled.length : NaN,
@@ -318,8 +327,8 @@ export function operatorStats(stats: EpisodeStats[]): OperatorStats[] {
       jerkPerMin: l.reduce((a, s) => a + s.jerkEvents, 0) / (dur / 60),
       idleFrac: l.reduce((a, s) => a + s.idleSec, 0) / dur,
       edgeIdleFrac: l.reduce((a, s) => a + s.edgeIdleSec, 0) / dur,
-      satFrac: l.reduce((a, s) => a + s.satFrac * s.duration, 0) / dur,
-      grasps, failedGraspRate: grasps ? failed / grasps : 0,
+      satFrac: sat.length ? sat.reduce((a, s) => a + s.satFrac * s.duration, 0) / (sat.reduce((a, s) => a + s.duration, 0) || 1e-9) : NaN,
+      grasps, failedGraspRate: grasps ? failed / grasps : NaN,
       labelMismatches: l.filter(s => s.issues.some(i => i.kind === 'label')).length,
     }
   }).sort((a, b) => a.operator.localeCompare(b.operator))
