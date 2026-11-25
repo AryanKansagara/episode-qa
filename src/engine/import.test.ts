@@ -47,3 +47,18 @@ test('complete files are read as before', () => {
   // Every row leaves out the trailing cells: that is how the file is written, not a cut.
   assert.equal(parseCsv('a,b,c\n1,2\n3,4').rows.length, 2)
 })
+
+// Cells written by pandas 2.3.3 / numpy 2.2.6 / pyarrow 20 with the command in Docs.
+test('numpy arrays wrapped over several lines become columns, and line numbers stay physical', () => {
+  const seven = '"[ 0.27646735  0.6572945   0.26434967 -1.0425258   0.7242847   0.35709965\n -0.4295626 ]"'
+  const csv = 'observation.state,episode_index,timestamp\n' + [0, 1, 2, 3].map(k => `${seven},0,${k === 2 ? 'soon' : k / 50}\n`).join('') + `${seven},0,0.08\n`
+  const b = imp(csv)
+  assert.deepEqual(b.episodes[0].q[0], [0.27646735, 0.6572945, 0.26434967, -1.0425258, 0.7242847, 0.35709965, -0.4295626])
+  assert.equal(b.issues[0].line, 6)
+  const fourteen = '"[ 0.27646735  0.6572945   0.26434967 -1.0425258   0.7242847   0.35709965\r\n -0.4295626   0.46489447  0.29165792  0.235306    0.02273779  0.4373704\r\n -0.58916324 -0.13032795]"'
+  const t = parseCsv('observation.state,episode_index,timestamp\r\n' + `${fourteen},0,0\r\n`)
+  assert.equal(t.headers.length, 16)
+  assert.equal(t.rows[0][13], '-0.13032795')
+  assert.equal(parseCsv('note,x\n"[moved\nfast]",1\n').headers.length, 2)
+  assert.equal(parseCsv('a,x\n"[1. nan\n 3.e-05]",1\n').headers.length, 4)
+})
