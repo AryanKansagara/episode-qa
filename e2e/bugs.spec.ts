@@ -133,7 +133,6 @@ test('#13 checks that could not run are not shown as clean', async ({ page }) =>
 })
 
 test('#14 an episode that never moves is not a clean 100', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   await importFiles(page, frames('f.csv', { id: 'A', q0: () => 0.5 }))
   await openTab(page, 'Episodes')

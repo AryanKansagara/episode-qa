@@ -46,3 +46,24 @@ test('idle does not run across a gap in which the arm moved, but does when it st
   const still = analyzeEpisode(ep(t, () => 0), cfg)
   assert.ok(Math.abs(still.idleSec - 9) < 1e-9)
 })
+
+test('an arm that never moves is flagged, not clean and not trimmed', () => {
+  for (const [f, name] of [[() => 0.5, 'constant'], [(x: number) => 0.5 + 0.0002 * Math.sin(40 * x), 'sensor noise']] as const) {
+    const s = analyzeEpisode(ep(grid(91), f), cfg)
+    assert.equal(s.score, 60, name)
+    assert.deepEqual([s.trim, s.trimFrames, s.edgeIdleSec, s.midIdleSec], [[0, 3], [0, 90], 0, 3], name)
+    assert.deepEqual(s.issues.map(i => [i.kind, i.msg]), [['idle', 'The arm never moves (3.0 s)']], name)
+  }
+  assert.equal(analyzeEpisode(ep(grid(20), () => 0.5), cfg).score, 60, 'constant, shorter than the minimum idle')
+})
+
+test('episodes that move are scored and trimmed as before', () => {
+  const s = analyzeEpisode(ep(grid(181), x => x < 4 ? 0 : (x - 4) ** 2), cfg)
+  assert.equal(s.score, 100)
+  assert.ok(s.trim[0] > 3 && s.edgeIdleSec > 3)
+  assert.equal(analyzeEpisode(ep(grid(20), x => x * 0.01), cfg).score, 100, 'slow, but shorter than the minimum idle')
+  // The viewer's playhead inside a leading idle stretch.
+  const part = analyzeEpisode(ep(grid(91), () => 0), cfg, true)
+  assert.equal(part.score, 100)
+  assert.ok(!part.issues.some(i => /never moves/.test(i.msg)))
+})
