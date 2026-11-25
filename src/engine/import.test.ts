@@ -157,3 +157,30 @@ test('ISO 8601 forms and plain numbers without a leading or trailing digit', () 
   assert.equal(parseStamp('2026-11-01 00:00:01'), new Date(2026, 10, 1, 0, 0, 1).getTime() / 1000, 'no offset: local time')
   assert.deepEqual(['.5', '5.', '+1.5', '-.5', '1.e-3'].map(x => parseStamp(x)), [0.5, 5, 1.5, -0.5, 0.001])
 })
+
+test('frames without an episode column: several recordings are an error, a single one imports', () => {
+  const rec = (n: number, from = 0) => Array.from({ length: n }, (_, k) => from + k / 10)
+  const file = (ts: number[]) => imp('demo_name,timestamp,q0,q1\n' + ts.map(x => `d,${x.toFixed(2)},0,0\n`).join(''), 'demo.csv')
+  for (const [ts, what] of [[[...rec(6), ...rec(6)], 'equal'], [[...rec(60), ...rec(8)], 'a short one after a long one'], [[...rec(8), ...rec(60)], 'a long one after a short one'], [[...rec(50), ...rec(50, 0.05)], 'shifted']] as const) {
+    const b = file(ts as number[])
+    assert.equal(b.episodes.length, 0, what)
+    assert.ok(b.issues.some(i => i.level === 'error' && /Map the episode id column/.test(i.message)), what)
+  }
+  const late = rec(60); [late[20], late[21]] = [late[21], late[20]]
+  for (const [ts, what] of [[rec(60), 'plain'], [late, 'one late sample'], [[...rec(30, 3), ...rec(30)], 'parts in the wrong order'], [[...rec(30), ...rec(30, 100)], 'a pause'], [[...rec(30), ...rec(30, 2.5)], 'a clock step back']] as const) {
+    const b = file(ts as number[])
+    assert.deepEqual(b.episodes.map(e => e.id), ['demo'], what)
+    assert.ok(b.issues.some(i => i.level === 'warn' && /one episode named "demo"/.test(i.message)), what)
+  }
+})
+
+test('camera files without an episode column', () => {
+  const file = (rows: [string, number][]) => imp('camera,timestamp\n' + rows.map(r => r.join(',') + '\n').join(''), 'demo.csv')
+  const one = (c: string) => [0, 1, 2, 3, 4].map(k => [c, k / 10] as [string, number])
+  assert.deepEqual(Object.keys(file([...one('w'), ...one('h')]).cams.demo), ['w', 'h'], 'two cameras, one after the other')
+  const b = file([...one('w'), ...one('w')])
+  assert.deepEqual(b.cams, {})
+  assert.ok(b.issues.some(i => i.level === 'error'))
+  // ROS bags are named by their file.
+  assert.ok(!imp('topic,stamp,field.position0,field.position1\n' + [0, 1, 2, 3].map(k => `/joint_states,${k / 10},0,0`).join('\n'), 'bag.csv').issues.length)
+})

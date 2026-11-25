@@ -263,6 +263,22 @@ export function stampUnit(streams: Iterable<string[]>): { unit?: StampUnit; warn
 }
 const bySize = (n: number): StampUnit => n > 1e17 ? 'ns' : n > 1e14 ? 'us' : n > 1e11 ? 'ms' : 's'
 
+/**
+ * Whether stamps start over: a stretch falls back by more than half of what came before and covers the same time again.
+ * Single late or swapped samples, and parts of one recording in the wrong order, do not count.
+ */
+export function restarts(ts: number[]): boolean {
+  const runs: { lo: number; hi: number; n: number }[] = []
+  for (const x of ts) {
+    const r = runs[runs.length - 1]
+    if (r && x >= r.hi) { r.hi = x; r.n++ } else runs.push({ lo: x, hi: x, n: 1 })
+  }
+  return runs.some((r, i) => {
+    const p = runs[i - 1]
+    return p && p.n >= 4 && r.n >= 4 && p.hi - r.lo > (p.hi - p.lo) / 2 && runs.slice(0, i).some(e => e.n >= 4 && r.lo < e.hi && r.hi > e.lo)
+  })
+}
+
 export function parseSuccess(raw: string): boolean | null {
   const s = raw.trim().toLowerCase()
   if (/^(true|1|1\.0|yes|y|success|succeeded|ok|pass)$/.test(s)) return true
@@ -331,6 +347,15 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
   }
 
   if (iT < 0) { issue(0, 'error', 'Map the timestamp column.'); return out }
+  // One ROS bag is one episode by design; in the other formats the file name only stands in for a single recording.
+  const named = iEp < 0 && kind !== 'ros'
+  /** Says what reading a file without ids means; true when the file cannot be read as one recording. */
+  const several = (streams: number[][]) => {
+    const many = streams.some(restarts)
+    if (many) issue(0, 'error', 'Timestamps start over, so this file holds more than one recording. Map the episode id column.')
+    else issue(0, 'warn', `No episode id column is mapped, so the whole file is read as one episode named "${defaultEp}".`)
+    return many
+  }
   let unit = m.stamps === 'auto' ? undefined : m.stamps
   if (!unit) {
     // Camera and topic columns: each has its own rate, so its gaps are its own.
@@ -360,6 +385,7 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
       const l = cs.get(cam)
       if (l) l.push(ts); else cs.set(cam, [ts])
     })
+    if (named && several([...camsBy.values()].flatMap(cs => [...cs.values()]))) return out
     for (const [id, cs] of camsBy) for (const [c, ts] of cs) {
       if (ts.some((x, i) => i > 0 && x < ts[i - 1])) issue(0, 'warn', `${id} / ${c}: timestamps out of order, sorted`)
       cs.set(c, [...new Set(ts)].sort((a, b) => a - b))
@@ -432,6 +458,8 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
     }
     a.rows.push(row)
   })
+
+  if (named && several([...acc.values()].map(a => a.rows.map(r => r.t)))) return out
 
   // Gripper scale: normalize to 0..1 when values look like mm or radians of finger travel.
   let gMax = 0
