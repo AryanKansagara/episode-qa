@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { analyzeEpisode, dupClusters, nearDuplicates, operatorStats } from './engine/analyze.ts'
 import { curate, DEFAULT_RULES, keptApartFromDuplicates, makeVersion, type Override, type Rule } from './engine/curate.ts'
 import { generateSample, SAMPLE_COUNT, SAMPLE_ID, SAMPLE_NAME } from './engine/sample.ts'
-import type { Config, Episode, EpisodeStats } from './engine/types.ts'
+import { own, type Config, type Episode, type EpisodeStats } from './engine/types.ts'
 import { getData, getDefaults, getProjects, saveProject, useProjects, uuid, type Dataset, type Project } from './store.ts'
 
 export const newRules = (): Rule[] => DEFAULT_RULES.map(r => ({ ...r, id: uuid() }))
@@ -54,7 +54,7 @@ export function useProject(id: string) {
 }
 
 function base(rawStats: EpisodeStats[], tagEdits: Record<string, string[]>, cfg: Pick<Config, 'th'>) {
-  const stats = rawStats.map(s => tagEdits[s.id] ? { ...s, tags: tagEdits[s.id] } : s)
+  const stats = rawStats.map(s => { const tags = own(tagEdits, s.id); return tags ? { ...s, tags } : s })
   return { stats, pairs: nearDuplicates(stats, cfg.th.dupDist), ops: operatorStats(stats) }
 }
 function duplicates({ stats, pairs }: ReturnType<typeof base>, rules: Rule[], overrides: Record<string, Override>) {

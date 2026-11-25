@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { balance, operatorFeedback, PENALTY_LABELS, scoreHistogram } from './engine/analyze.ts'
 import { decisionsCsv, decisionsJson, describeRule, diffVersions, FIELD_META, matches, type Override, type Rule, type RuleAction, type RuleField, type RuleOp } from './engine/curate.ts'
-import type { EpisodeStats, IssueKind } from './engine/types.ts'
+import { own, type EpisodeStats, type IssueKind } from './engine/types.ts'
 import type { Tab, TabProps } from './Project.tsx'
 import { fmtS } from './projectData.ts'
 import { saveProject, uuid } from './store.ts'
@@ -144,7 +144,7 @@ function Episodes({ project, ds, d, update }: TabProps) {
       (!f.text || s.id.toLowerCase().includes(f.text.toLowerCase()) || s.tags.some(t => t.includes(f.text.toLowerCase()))) &&
       (!f.op || s.operator === f.op) && (!f.task || s.task === f.task) &&
       (!f.kind || (f.kind === 'clean' ? !s.issues.length : s.issues.some(i => i.kind === f.kind))) &&
-      (!f.dec || (f.dec === 'kept' ? d.keep.has(s.id) : f.dec === 'excluded' ? !d.keep.has(s.id) : f.dec === 'trimmed' ? !!dec.get(s.id)?.trim : !!project.overrides[s.id])))
+      (!f.dec || (f.dec === 'kept' ? d.keep.has(s.id) : f.dec === 'excluded' ? !d.keep.has(s.id) : f.dec === 'trimmed' ? !!dec.get(s.id)?.trim : !!own(project.overrides, s.id))))
     const by: Record<string, (a: EpisodeStats, b: EpisodeStats) => number> = { score: (a, b) => a.score - b.score, '-score': (a, b) => b.score - a.score, duration: (a, b) => b.duration - a.duration, id: (a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }) }
     return l.sort(by[f.sort])
   }, [d.stats, f, d.keep, dec, project.overrides])
@@ -155,8 +155,8 @@ function Episodes({ project, ds, d, update }: TabProps) {
   const open = (id: string | null) => { setSel(id); history.replaceState({}, '', `${location.pathname}${id ? `?ep=${encodeURIComponent(id)}` : ''}`); if (id) document.getElementById('ep-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
   const setOverride = (id: string, o: Override | null) => {
     const before = project.overrides
-    const next = { ...before }
-    if (o) next[id] = o; else delete next[id]
+    const { [id]: _, ...rest } = before
+    const next = o ? { ...rest, [id]: o } : rest
     void update({ overrides: next }, o ? `Manual ${o}: ${id}` : `Manual override cleared: ${id}`)
     toast(o ? `${id} ${o === 'keep' ? 'always kept' : 'excluded'}` : `${id} back to rules`, { undo: () => void update({ overrides: before }) })
   }
@@ -185,7 +185,7 @@ function Episodes({ project, ds, d, update }: TabProps) {
             <div className="row gap-sm wrap">
               <button type="button" className="btn sm outline" onClick={() => setOverride(s.id, 'exclude')} title="X">Exclude</button>
               <button type="button" className="btn sm outline" onClick={() => setOverride(s.id, 'keep')} title="A">Always keep</button>
-              {project.overrides[s.id] && <button type="button" className="btn sm ghost" onClick={() => setOverride(s.id, null)} title="U">Use rules</button>}
+              {own(project.overrides, s.id) && <button type="button" className="btn sm ghost" onClick={() => setOverride(s.id, null)} title="U">Use rules</button>}
               <button type="button" className="icon-btn" aria-label="Close episode" onClick={() => open(null)}>&times;</button>
             </div>
           </div>
@@ -234,7 +234,7 @@ function Episodes({ project, ds, d, update }: TabProps) {
                   <td className="num"><span className={`score-num t-${x.score >= 85 ? 'good' : x.score >= 70 ? 'ok' : 'bad'}`}>{x.score}</span></td>
                   <td><KindChips s={x} /></td>
                   <td className="num">{x.duration.toFixed(1)} s</td>
-                  <td>{d.keep.has(x.id) ? <span className="badge kept">{dec.get(x.id)?.trim ? 'Keep, trim' : 'Keep'}</span> : <span className="badge excluded">Exclude</span>}{project.overrides[x.id] && <span className="muted tiny"> manual</span>}</td>
+                  <td>{d.keep.has(x.id) ? <span className="badge kept">{dec.get(x.id)?.trim ? 'Keep, trim' : 'Keep'}</span> : <span className="badge excluded">Exclude</span>}{own(project.overrides, x.id) && <span className="muted tiny"> manual</span>}</td>
                 </tr>
               ))}</tbody>
             </table>
@@ -329,7 +329,7 @@ function Balance({ project, d, update }: TabProps) {
                   <div key={x} className="row gap-sm wrap">
                     <span className="badge excluded">Duplicate</span> <Link href={epHref(project.id, x)} className="mono">{x}</Link>
                     <span className="muted small">distance {dist(c.keep, x)?.toFixed(4) ?? '—'} m · score {byId.get(x)?.score}</span>
-                    {project.overrides[x] !== 'keep' && <button type="button" className="linkish small" onClick={() => { const before = project.overrides; void update({ overrides: { ...before, [x]: 'keep' } }, `Kept duplicate ${x} on purpose`); toast(`${x} kept`, { undo: () => void update({ overrides: before }) }) }}>Not a duplicate, keep it</button>}
+                    {own(project.overrides, x) !== 'keep' && <button type="button" className="linkish small" onClick={() => { const before = project.overrides; void update({ overrides: { ...before, [x]: 'keep' } }, `Kept duplicate ${x} on purpose`); toast(`${x} kept`, { undo: () => void update({ overrides: before }) }) }}>Not a duplicate, keep it</button>}
                   </div>
                 ))}
               </div>
