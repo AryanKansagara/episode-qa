@@ -28,3 +28,21 @@ test('without drops only the first three frames have no jerk value', () => {
   assert.deepEqual(j.map(Number.isNaN), [true, true, true, ...Array(7).fill(false)])
   for (const v of j.slice(3)) assert.ok(Math.abs(v - 6) < 1e-6)
 })
+
+test('motion through a slower stretch of the recording is not idle', () => {
+  const t = [...grid(91), ...grid(31, 10).slice(1).map(x => x + 3)]
+  const s = analyzeEpisode(ep(t, x => x), cfg)
+  assert.equal(s.idleSec, 0)
+  assert.deepEqual(s.trim, [0, 6])
+  assert.ok(s.joints.dropped > 0)
+})
+
+test('idle does not run across a gap in which the arm moved, but does when it stayed', () => {
+  const t = grid(271).filter((_, k) => k < 90 || k >= 150)
+  const moved = analyzeEpisode(ep(t, x => x < 4 ? 0 : 2), cfg)
+  // Still until frame 89 (2.967 s); frames 88 and 89 see the 2 rad move in their 5-frame window, so idle ends at 2.9 s.
+  assert.ok(Math.abs(moved.trim[0] - (87 / 30 - 0.25)) < 1e-9)
+  assert.ok(moved.trim[1] > 5 && moved.trim[1] < 5.5, `trim end ${moved.trim[1]}`)
+  const still = analyzeEpisode(ep(t, () => 0), cfg)
+  assert.ok(Math.abs(still.idleSec - 9) < 1e-9)
+})
