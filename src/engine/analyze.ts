@@ -143,7 +143,8 @@ export function sliceEpisode(ep: Episode, upTo: number): Episode {
   return { ...ep, t: ep.t.slice(0, n), frame: cut(ep.frame), q: ep.q.slice(0, n), act: cut(ep.act), grip: cut(ep.grip), gripCmd: cut(ep.gripCmd), ee: cut(ep.ee), cams: Object.fromEntries(Object.entries(ep.cams).map(([k, v]) => [k, v.filter(x => x <= upTo)])) }
 }
 
-export function analyzeEpisode(ep: Episode, cfg: Config): EpisodeStats {
+/** `partial` is for a recording cut at the playhead: standing still so far does not mean it never moves. */
+export function analyzeEpisode(ep: Episode, cfg: Config, partial = false): EpisodeStats {
   const { th, limits } = cfg
   const { t, q } = ep
   const t0 = t[0] ?? 0, tN = t.at(-1) ?? 0
@@ -202,7 +203,8 @@ export function analyzeEpisode(ep: Episode, cfg: Config): EpisodeStats {
     for (let i = Math.max(0, k - 2); i <= Math.min(speed.length - 1, k + 2); i++) if (!Number.isNaN(speed[i])) { s += speed[i]; c++ }
     return c ? s / c < th.idleSpeed : true
   })
-  const idle = spans(t, idleFlag).filter(([a, b]) => b - a >= th.idleMinSec)
+  const still = !partial && t.length > 1 && idleFlag.every(Boolean) && (duration >= th.idleMinSec || q.every(r => r.every((x, j) => x === q[0][j])))
+  const idle = still ? [] : spans(t, idleFlag).filter(([a, b]) => b - a >= th.idleMinSec)
   let idleSec = 0, edgeIdleSec = 0
   let trimA = t0, trimB = tN
   const pad = 0.25
@@ -212,6 +214,8 @@ export function analyzeEpisode(ep: Episode, cfg: Config): EpisodeStats {
     else if (b >= tN - 1e-9) { edgeIdleSec += b - a; trimB = Math.min(tN, a + pad) }
     else issues.push({ kind: 'idle', t: a, t2: b, msg: `Stationary for ${(b - a).toFixed(1)} s` })
   }
+  // No trim fixes an episode without motion, so its idle time is not edge idle.
+  if (still) { idleSec = duration; issues.push({ kind: 'idle', t: t0, t2: tN, msg: `The arm never moves (${duration.toFixed(1)} s)` }) }
   if (trimA > t0) issues.push({ kind: 'idle', t: t0, t2: trimA, msg: `Leading idle ${(trimA - t0).toFixed(1)} s (trim)` })
   if (trimB < tN) issues.push({ kind: 'idle', t: trimB, t2: tN, msg: `Trailing idle ${(tN - trimB).toFixed(1)} s (trim)` })
   const midIdleSec = idleSec - edgeIdleSec
@@ -232,7 +236,7 @@ export function analyzeEpisode(ep: Episode, cfg: Config): EpisodeStats {
     sync: Math.min(15, Math.max(0, syncMs - th.offsetWarnMs) / 4),
     jerk: Math.min(20, jerkSpans.length * 4),
     saturation: Math.min(15, satFrac * 100),
-    idle: Math.min(10, (midIdleSec / 60 / activeMin) * 40),
+    idle: still ? 40 : Math.min(10, (midIdleSec / 60 / activeMin) * 40),
     grasp: Math.min(20, failed.length * 10),
   }
   const score = Math.max(0, Math.round(100 - Object.values(penalties).reduce((a, b) => a + b, 0)))

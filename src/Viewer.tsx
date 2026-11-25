@@ -75,7 +75,7 @@ export function Viewer({ ep, cfg, autoplay = false, speed = 1.6, title }: { ep: 
     // Cameras keep the frame nearest the cut, so frame phase (up to one period) does not read as offset.
     const part = sliceEpisode(ep, cut)
     part.cams = Object.fromEntries(Object.entries(ep.cams).map(([c, ts]) => { const per = ts.length > 1 ? (ts[ts.length - 1] - ts[0]) / (ts.length - 1) : 0; return [c, ts.filter(x => x <= cut + per / 2)] }))
-    return analyzeEpisode(part, cfg)
+    return analyzeEpisode(part, cfg, true)
   }, [ep, cfg, k])
 
   // Geometry
