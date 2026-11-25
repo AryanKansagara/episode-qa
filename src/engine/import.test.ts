@@ -138,3 +138,22 @@ test('camera files and shuffled rows: gaps are taken per stream', () => {
   const n = 300, shuffled = Array.from({ length: n }, (_, i) => ((i * 113) % n) / 30)
   assert.equal(hz(stampFile('a', shuffled)), 30)
 })
+
+test('text that is not ISO 8601 is not a timestamp', () => {
+  for (const x of ['frame 1', 'run-3', 'demo 12', 'Jan 5 2024', '1/2/2024', '2024-13-01', '2024-02-30', '2024-1-5', 'x2024-01-01', '2024-01-01 at 5', '2024-01-01T25:00:00Z', '1.2.3', '.', 'e5'])
+    assert.ok(Number.isNaN(parseStamp(x)), x)
+  const b = stampFile('A', [1, 2, 3, 4, 5].map(k => `frame ${k}`))
+  assert.equal(b.episodes.length, 0)
+  assert.deepEqual(b.issues.map(i => i.line), [2, 3, 4, 5, 6])
+  assert.match(b.issues[0].message, /"frame 1" is not a number or ISO date/)
+})
+
+test('ISO 8601 forms and plain numbers without a leading or trailing digit', () => {
+  const at = Date.UTC(2026, 10, 1, 0, 0, 1) / 1000
+  for (const x of ['2026-11-01T00:00:01Z', '2026-11-01t00:00:01z', '2026-11-01 00:00:01+00:00', '2026-11-01T01:00:01+0100', '2026-10-31T23:00:01-01', '2026-11-01T00:00:01.000000+00:00', '2026-11-01T00:00:01,000Z'])
+    assert.equal(parseStamp(x), at, x)
+  assert.equal(parseStamp('2026-11-01T00:00:01.033333+00:00'), at + 0.033)
+  assert.equal(parseStamp('2026-11-01'), Date.UTC(2026, 10, 1) / 1000)
+  assert.equal(parseStamp('2026-11-01 00:00:01'), new Date(2026, 10, 1, 0, 0, 1).getTime() / 1000, 'no offset: local time')
+  assert.deepEqual(['.5', '5.', '+1.5', '-.5', '1.e-3'].map(x => parseStamp(x)), [0.5, 5, 1.5, -0.5, 0.001])
+})

@@ -70,7 +70,6 @@ test('#8 relative milliseconds are not read as seconds', async ({ page }) => {
 })
 
 test('#9 text with a number in it is not a timestamp', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   const panel = await offer(page, { name: 'names.csv', text: 'episode_index,timestamp,q0,q1\n' + [1, 2, 3, 4, 5].map(k => `A,frame ${k},0,0`).join('\n') })
   await expect(panel).toContainText('0 episodes ready', { timeout: 5000 })

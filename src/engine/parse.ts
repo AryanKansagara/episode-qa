@@ -196,7 +196,9 @@ export function detectKind(headers: string[], m = autoMap(headers)): Kind {
 export type StampUnit = 's' | 'ms' | 'us' | 'ns'
 const PER_SEC: Record<StampUnit, number> = { s: 1, ms: 1e3, us: 1e6, ns: 1e9 }
 export const UNIT_NAME: Record<StampUnit, string> = { s: 'seconds', ms: 'milliseconds', us: 'microseconds', ns: 'nanoseconds' }
-const NUMBER = /^-?\d+(\.\d+)?(e[+-]?\d+)?$/i
+const NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i
+// Date, or date and time with an optional offset; the space is how pandas writes it.
+const ISO = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?)(Z|[+-]\d{2}(?::?\d{2})?)?)?$/i
 
 /** Seconds from numbers (in `unit`, or s, ms, us or ns by magnitude), or ISO 8601 strings. */
 export function parseStamp(raw: string, unit?: StampUnit): number {
@@ -211,7 +213,13 @@ export function parseStamp(raw: string, unit?: StampUnit): number {
   // ROS "secs.nsecs" with zero-padded nsecs is plain decimal; "1700000000:123" style is secs:nsecs
   const sn = s.match(/^(\d+)[:](\d{1,9})$/)
   if (sn) return Number(sn[1]) + Number(sn[2].padEnd(9, '0')) / 1e9
-  const d = Date.parse(s)
+  // Date.parse on its own finds a date in almost any text with a number ("frame 1" is 2001), so the shape is checked first.
+  const iso = s.match(ISO)
+  if (!iso) return NaN
+  const [, y, mo, day, time, zone = ''] = iso
+  if (new Date(Date.UTC(+y, +mo - 1, +day)).getUTCDate() !== +day) return NaN
+  const offset = zone.toUpperCase().replace(/^([+-]\d{2}):?(\d{2})?$/, (_, h, min = '00') => `${h}:${min}`)
+  const d = Date.parse(`${y}-${mo}-${day}` + (time ? `T${time.replace(',', '.')}${offset}` : ''))
   return Number.isNaN(d) ? NaN : d / 1000
 }
 
