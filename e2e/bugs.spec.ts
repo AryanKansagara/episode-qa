@@ -108,12 +108,28 @@ test('#12 a task list keeps the whole task', async ({ page }) => {
 })
 
 test('#13 grasps that could not be judged are not "0% failed"', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   await importFiles(page, frames('f.csv', { id: 'A', q0: line, grip: t => t < 1 ? 1 : 0 }))
   await openTab(page, 'Operators')
   // Episodes, Recorded, Score, Success, Failed grasps
   await expect(page.locator('tbody tr').first().getByRole('cell').nth(4)).toHaveText('—', { timeout: 5000 })
+})
+
+test('#13 checks that could not run are not shown as clean', async ({ page }) => {
+  await newDataset(page)
+  // Two joints against 7 limits, no cameras, a gripper without a command.
+  await importFiles(page, frames('f.csv', { id: 'A', q0: line, grip: t => t < 1 ? 1 : 0 }))
+  await openTab(page, 'Overview')
+  await expect(page.locator('.kpi', { hasText: 'Failed grasps' })).toContainText('not checked')
+  await expect(page.locator('.op-card')).toContainText('grasps not checked')
+  await expect(page.locator('.kbar b')).toHaveText(['0', '—', '0', '—', '0', '—', '—'])
+  await openTab(page, 'Operators')
+  await expect(page.locator('tbody tr').first().getByRole('cell').nth(8)).toHaveText('—')
+  const ep = await openEpisode(page, 'A')
+  await expect(ep.locator('.mini-stats div', { hasText: 'Camera offset' })).toContainText('not checked')
+  await page.getByRole('link', { name: 'Report', exact: true }).click()
+  for (const k of ['Sync drift', 'Saturation', 'Failed grasp', 'Label mismatch']) await expect(page.getByRole('row', { name: new RegExp(`^${k} `) })).toContainText('not checked')
+  await expect(page.getByRole('row', { name: /^Dropped frames / })).not.toContainText('not checked')
 })
 
 test('#14 an episode that never moves is not a clean 100', async ({ page }) => {

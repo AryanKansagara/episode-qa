@@ -77,6 +77,8 @@ export interface EpisodeStats {
   jerkEvents: number
   jerkPeak: number
   satFrac: number
+  /** False when the limits are for another joint count, so saturation was not checked (missing in older results). */
+  satChecked?: boolean
   satJoints: number[]
   idleSec: number
   /** Idle time that is neither leading nor trailing. */

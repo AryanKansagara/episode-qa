@@ -86,6 +86,8 @@ export default function Docs() {
         <li><strong>Operators and balance</strong>: per-operator means of the above, with feedback only where someone is 1.5&times; worse than the team median. Balance flags tasks under half or over double an even share of the kept set.</li>
       </ul>
 
+      <p>A check that could not run (no camera timestamps, no judged grasp, limits for another joint count) reads &ldquo;&mdash;&rdquo; or &ldquo;not checked&rdquo;, never 0.</p>
+
       <h2 id="scoring">Quality score</h2>
       <p>100 minus penalties, each capped: drops (drop rate &times; 250, max 25), sync (offset beyond the warning / 4 per ms, max 15), jerk (4 per spike, max 20), saturation (% of frames, max 15), mid-episode idle (idle share &times; 40, max 10), failed grasps (10 each, max 20). Leading and trailing idle is not penalised because a trim fixes it. Weights are deliberately simple so you can explain an excluded episode to the operator who recorded it.</p>
 
