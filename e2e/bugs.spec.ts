@@ -141,7 +141,6 @@ test('#14 an episode that never moves is not a clean 100', async ({ page }) => {
 })
 
 test('#15 trim frames are frame_index values when rows were skipped', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   // Moves to k = 40, then still to k = 70. Idle from k = 43 (4.3 s), trim at 4.55 s, so frame 46. Rows 5-24 are unreadable.
   const rows = Array.from({ length: 71 }, (_, k) => `A,${k},${(k / 10).toFixed(1)},${k >= 5 && k < 25 ? 'nan' : (0.1 * Math.min(k, 40)).toFixed(3)},0`)
