@@ -62,3 +62,12 @@ test('numpy arrays wrapped over several lines become columns, and line numbers s
   assert.equal(parseCsv('note,x\n"[moved\nfast]",1\n').headers.length, 2)
   assert.equal(parseCsv('a,x\n"[1. nan\n 3.e-05]",1\n').headers.length, 4)
 })
+
+test('200,000 frames import, with the gripper scale and degrees found in the last row', () => {
+  const N = 200_000
+  const csv = 'episode_index,timestamp,q0,q1,gripper\n' + Array.from({ length: N }, (_, i) => `${Math.floor(i / 1000)},${(i % 1000) / 10},${i === N - 1 ? 90 : 0.1},0.2,${i === N - 1 ? 85 : 42.5}`).join('\n')
+  const b = imp(csv)
+  assert.equal(b.episodes.length, 200)
+  assert.ok(Math.abs(b.episodes[199].q[999][0] - Math.PI / 2) < 1e-12)
+  assert.equal(b.episodes[0].grip![0], 0.5)
+})

@@ -33,7 +33,6 @@ test('#3 numpy arrays wrapped over two lines import as joints', async ({ page })
 
 test('#4 200,000 frames can be imported', async ({ page }) => {
   test.slow()
-  test.fail()
   await newDataset(page)
   const text = 'episode_index,timestamp,q0,q1,gripper\n' + Array.from({ length: 200_000 }, (_, i) => `${Math.floor(i / 1000)},${(i % 1000) / 10},0.1,0.2,40`).join('\n')
   await drop(page, { name: 'big.csv', text })
