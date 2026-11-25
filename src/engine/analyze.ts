@@ -70,7 +70,8 @@ export function velocities(t: number[], q: number[][], period: number, factor: n
 export function jerkSeries(t: number[], x: number[][], period: number, factor: number): number[] {
   const p3 = period ** 3
   return x.map((row, k) => {
-    if (k < 3 || t[k] - t[k - 3] > 3 * factor * period) return NaN
+    // Each gap on its own: one dropped frame makes a 4-period window, which the sum would let through.
+    if (k < 3 || [k, k - 1, k - 2].some(i => t[i] - t[i - 1] > factor * period)) return NaN
     let m = 0
     for (let j = 0; j < row.length; j++) {
       const v = Math.abs(row[j] - 3 * x[k - 1][j] + 3 * x[k - 2][j] - x[k - 3][j]) / p3
@@ -173,7 +174,7 @@ export function analyzeEpisode(ep: Episode, cfg: Config): EpisodeStats {
   // Jerk on commanded actions when present
   const jser = jerkSeries(t, ep.act ?? q, js.period, th.dropFactor)
   const jerkSpans = spans(t, jser.map(v => v > th.jerkLimit), 0.2)
-  for (const [a, b] of jerkSpans) issues.push({ kind: 'jerk', t: a, t2: b, msg: `Jerk ${Math.round(Math.max(...jser.filter((v, k) => t[k] >= a && t[k] <= b)))} rad/s³` })
+  for (const [a, b] of jerkSpans) issues.push({ kind: 'jerk', t: a, t2: b, msg: `Jerk ${Math.round(jser.reduce((m, v, k) => t[k] >= a && t[k] <= b && v > m ? v : m, 0))} rad/s³` })
   const jerkPeak = jser.reduce((m, v) => v > m ? v : m, 0)
 
   // Saturation against user-entered limits
@@ -194,7 +195,8 @@ export function analyzeEpisode(ep: Episode, cfg: Config): EpisodeStats {
   for (const [a, b] of spans(t, satFlag, 0.1)) issues.push({ kind: 'saturation', t: a, t2: b, msg: `At a joint limit for ${(b - a).toFixed(1)} s` })
 
   // Idle: fastest joint below idleSpeed, on a 5-frame moving average so sensor noise does not split stretches
-  const speed = vel.map(v => v.reduce((m, x) => Math.max(m, Math.abs(x)), 0))
+  // Across a dropped gap the mean speed (distance / gap) still shows that the arm moved; unknown must not read as still.
+  const speed = q.map((row, k) => k === 0 || !(t[k] > t[k - 1]) ? NaN : row.reduce((m, x, j) => Math.max(m, Math.abs(x - q[k - 1][j])), 0) / (t[k] - t[k - 1]))
   const idleFlag = speed.map((_, k) => {
     let s = 0, c = 0
     for (let i = Math.max(0, k - 2); i <= Math.min(speed.length - 1, k + 2); i++) if (!Number.isNaN(speed[i])) { s += speed[i]; c++ }

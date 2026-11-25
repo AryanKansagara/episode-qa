@@ -5,3 +5,5 @@ dist
 .env
 .env.local
 .env*
+playwright-report
+test-results

@@ -40,7 +40,7 @@ export default function DataTab({ project, ds, d }: TabProps) {
       if (/\.(parquet|bag|mcap|db3)$/i.test(f.name)) { toast(`${f.name}: binary format. See Docs for the one-line conversion to CSV.`, { tone: 'error', action: { label: 'Docs', run: () => go('/docs#convert') } }); continue }
       try {
         const table = readTable(f.name, await f.text())
-        if (!table.rows.length) { toast(`${f.name} has no data rows.`, { tone: 'error' }); continue }
+        if (!table.rows.length) { toast(table.problems?.length ? `${f.name}: ${table.problems[0].message}` : `${f.name} has no data rows.`, { tone: 'error' }); continue }
         const map = autoMap(table.headers)
         next.push({ id: uuid(), name: f.name, table, kind: detectKind(table.headers, map), map })
       } catch (e) { toast(`${f.name}: ${e instanceof Error ? e.message : 'could not be read'}`, { tone: 'error' }) }
