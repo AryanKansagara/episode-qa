@@ -76,11 +76,11 @@ export function parseJsonl(text: string): Table {
   const t = text.trim()
   if (t.startsWith('[')) {
     const arr = JSON.parse(t) as unknown[]
-    arr.forEach((o, i) => { const r: Record<string, string> = {}; flatten(o, '', r); recs.push({ r, line: i + 1 }) })
+    arr.forEach((o, i) => { const r: Record<string, string> = Object.create(null); flatten(o, '', r); recs.push({ r, line: i + 1 }) })
   } else {
     text.split(/\r?\n/).forEach((l, i) => {
       if (!l.trim()) return
-      const r: Record<string, string> = {}
+      const r: Record<string, string> = Object.create(null)
       try { flatten(JSON.parse(l), '', r) } catch { r['__error'] = 'Not valid JSON' }
       recs.push({ r, line: i + 1 })
     })
@@ -296,6 +296,7 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
   const errCol = t.headers.indexOf('__error')
 
   if (kind === 'episodes') {
+    const metaBy = new Map<string, Meta>()
     if (iEp < 0) { issue(0, 'error', 'Map the episode id column to attach metadata.'); return out }
     const iTask = col(m.task), iOp = col(m.operator), iS = col(m.success)
     const tagCols = resolveCols(t.headers, m.tags).map(h => t.headers.indexOf(h))
@@ -315,8 +316,9 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
       }
       const tags = tagCols.flatMap(i => (r[i] ?? '').split(/[;|]/)).map(s => s.trim()).filter(Boolean)
       if (tags.length) meta.tags = tags
-      out.meta[id] = { ...out.meta[id], ...meta }
+      metaBy.set(id, { ...metaBy.get(id), ...meta })
     })
+    out.meta = Object.fromEntries(metaBy)
     return out
   }
 
@@ -338,18 +340,23 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
 
   if (kind === 'cameras') {
     const iC = col(m.camera)
+    const camsBy = new Map<string, Map<string, number[]>>()
     t.rows.forEach((r, k) => {
       const line = t.lines[k]
       const id = epOf(r), ts = parseStamp(r[iT] ?? '', unit)
       if (!id) return skip(line, 'Missing episode id')
       if (!Number.isFinite(ts)) return skip(line, `Timestamp "${r[iT]}" is not a number or ISO date`)
       const cam = iC >= 0 ? r[iC].trim() || 'camera' : 'camera'
-      ;((out.cams[id] ??= {})[cam] ??= []).push(ts)
+      const cs = camsBy.get(id) ?? new Map<string, number[]>()
+      camsBy.set(id, cs)
+      const l = cs.get(cam)
+      if (l) l.push(ts); else cs.set(cam, [ts])
     })
-    for (const [id, cs] of Object.entries(out.cams)) for (const [c, ts] of Object.entries(cs)) {
+    for (const [id, cs] of camsBy) for (const [c, ts] of cs) {
       if (ts.some((x, i) => i > 0 && x < ts[i - 1])) issue(0, 'warn', `${id} / ${c}: timestamps out of order, sorted`)
-      cs[c] = [...new Set(ts)].sort((a, b) => a - b)
+      cs.set(c, [...new Set(ts)].sort((a, b) => a - b))
     }
+    out.cams = Object.fromEntries([...camsBy].map(([id, cs]) => [id, Object.fromEntries(cs)]))
     return out
   }
 
@@ -359,9 +366,9 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
   const eeCols = resolveCols(t.headers, m.ee).slice(0, 3).map(h => t.headers.indexOf(h))
   if (!jointCols.length) { issue(0, 'error', 'No joint position columns matched. Set the joint columns pattern.'); return out }
 
-  interface Acc { id: string; rows: { t: number; q: number[]; a?: number[]; g?: number; gc?: number; ee?: number[] }[]; cams: Record<string, number[]>; task?: string; op?: string; s?: boolean | null; line: number; lastG?: number; lastGc?: number; lastA?: number[]; badS?: boolean }
+  interface Acc { id: string; rows: { t: number; q: number[]; a?: number[]; g?: number; gc?: number; ee?: number[] }[]; cams: Map<string, number[]>; task?: string; op?: string; s?: boolean | null; line: number; lastG?: number; lastGc?: number; lastA?: number[]; badS?: boolean }
   const acc = new Map<string, Acc>()
-  const get = (id: string, line: number) => { let a = acc.get(id); if (!a) { a = { id, rows: [], cams: {}, line }; acc.set(id, a) } return a }
+  const get = (id: string, line: number) => { let a = acc.get(id); if (!a) { a = { id, rows: [], cams: new Map(), line }; acc.set(id, a) } return a }
   const topicCol = col(m.topic)
   const reOf = (s: string) => { try { return new RegExp(s, 'i') } catch { return /$^/ } }
   const reJ = reOf(m.jointTopic), reA = reOf(m.actionTopic), reG = reOf(m.gripTopic), reC = reOf(m.cameraTopics)
@@ -378,7 +385,12 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
     const a = get(id, line)
     if (kind === 'ros') {
       const topic = (r[topicCol] ?? '').trim()
-      if (reC.test(topic)) { (a.cams[topic.replace(/^\//, '').replace(/\/(image_raw|image|compressed)$/g, '')] ??= []).push(ts); return }
+      if (reC.test(topic)) {
+        const cam = topic.replace(/^\//, '').replace(/\/(image_raw|image|compressed)$/g, '')
+        const l = a.cams.get(cam)
+        if (l) l.push(ts); else a.cams.set(cam, [ts])
+        return
+      }
       if (reG.test(topic) && !reJ.test(topic)) {
         const g = num(r[iG] ?? '')
         if (Number.isFinite(g)) a.lastG = g
@@ -449,7 +461,7 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
     const G = fill(rows.map(r => r.g))
     const GC = fill(rows.map(r => r.gc))
     const allEe = rows.every(r => r.ee)
-    const cams = Object.fromEntries(Object.entries(a.cams).map(([c, ts]) => [c, [...new Set(ts)].sort((x, y) => x - y).map(x => x - t0)]))
+    const cams = Object.fromEntries([...a.cams].map(([c, ts]) => [c, [...new Set(ts)].sort((x, y) => x - y).map(x => x - t0)]))
     out.episodes.push({
       id: a.id, task: a.task ?? 'unlabelled task', operator: a.op ?? 'unknown', success: a.s ?? null, tags: [],
       t: rows.map(r => r.t - t0), q: rows.map(r => r.q),

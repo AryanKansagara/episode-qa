@@ -1,4 +1,4 @@
-import type { EpisodeStats } from './types.ts'
+import { own, type EpisodeStats } from './types.ts'
 
 export type RuleField = 'score' | 'dropRate' | 'syncMs' | 'jerkEvents' | 'satFrac' | 'midIdleSec' | 'edgeIdleSec' | 'failedGrasps' | 'duration' | 'success' | 'operator' | 'task' | 'tag' | 'duplicate' | 'labelMismatch'
 export type RuleOp = '<' | '>' | '=' | '!='
@@ -97,7 +97,7 @@ export function curate(stats: EpisodeStats[], rules: Rule[], overrides: Record<s
     const ex = hit.filter(r => r.action === 'exclude')
     const keep = hit.some(r => r.action === 'keep')
     const trimRule = hit.some(r => r.action === 'trim')
-    const o = overrides[s.id]
+    const o = own(overrides, s.id)
     const include = o ? o === 'keep' : keep || !ex.length
     const reasons = o ? [`Manual ${o}`] : keep && ex.length ? ['Kept by rule'] : ex.map(describeRule)
     const trim = include && trimRule && (s.trim[0] > 0 || s.trim[1] < s.duration) ? s.trim : null

@@ -163,7 +163,6 @@ test('#18 clearing a threshold does not store 0', async ({ page }) => {
 })
 
 test('#19 an episode id of __proto__ does not touch Object.prototype', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   await offer(page, { name: 'c.csv', text: 'episode_index,camera,timestamp\n__proto__,evil,1\n' })
   expect(await page.evaluate(() => 'evil' in {})).toBe(false)

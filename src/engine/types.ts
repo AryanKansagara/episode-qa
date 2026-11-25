@@ -23,6 +23,9 @@ export interface Episode {
   t0?: number
 }
 
+/** Own value of an object keyed by imported names; ids such as "constructor" must not reach Object.prototype. */
+export const own = <T>(o: Record<string, T>, k: string): T | undefined => Object.hasOwn(o, k) ? o[k] : undefined
+
 export interface JointLimit { name: string; min: number; max: number; vel: number }
 
 export interface Thresholds {
