@@ -101,7 +101,6 @@ test('#11 excluding the kept copy keeps the other one', async ({ page }) => {
 })
 
 test('#12 a task list keeps the whole task', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   await importFiles(page, frames('f.csv', { id: '0', q0: line }), { name: 'm.csv', text: "episode_index,tasks\n0,['cube to bin']\n" })
   expect((await curatedJson(page)).episodes[0].task).toBe('cube to bin')

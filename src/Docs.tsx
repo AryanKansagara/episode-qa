@@ -55,7 +55,7 @@ export default function Docs() {
         <li><strong>Camera frame timestamps</strong> (CSV or JSONL): <code>episode, camera, timestamp</code>, one row per frame. Needed for camera drop and sync checks when your per-frame table does not carry them.</li>
         <li><strong>ROS bag CSV</strong>: rows with a topic column and a stamp, written by the short rosbags script below. One file per bag; the file name becomes the episode id unless you map an episode column.</li>
       </ul>
-      <p>Timestamps can be seconds, milliseconds, microseconds or nanoseconds (one unit per column: epoch values by their size, values relative to a start by their typical gap, with a warning that names the unit and a menu to change it), <code>secs:nsecs</code>, or ISO 8601. Array cells written by pandas (<code>"[0.1, 0.2]"</code>) and nested JSON arrays are split into <code>name.0</code>, <code>name.1</code> columns, so <code>observation.state.*</code> matches LeRobot&rsquo;s state vector.</p>
+      <p>Timestamps can be seconds, milliseconds, microseconds or nanoseconds (one unit per column: epoch values by their size, values relative to a start by their typical gap, with a warning that names the unit and a menu to change it), <code>secs:nsecs</code>, or ISO 8601. Array cells written by pandas (<code>"[0.1, 0.2]"</code>) and nested JSON arrays are split into <code>name.0</code>, <code>name.1</code> columns, so <code>observation.state.*</code> matches LeRobot&rsquo;s state vector. Text lists (<code>['cube to bin']</code>) keep each string whole.</p>
       <Code label="Per-frame CSV (what the sample download looks like)" code={FRAMES} />
       <Code label="episodes.jsonl" code={EPISODES} />
 
