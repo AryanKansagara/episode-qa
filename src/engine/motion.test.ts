@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { analyzeEpisode, defaultConfig, jerkSeries } from './analyze.ts'
+import { analyzeEpisode, defaultConfig, jerkSeries, suggestJerkLimit } from './analyze.ts'
 import type { Episode } from './types.ts'
 
 const cfg = { ...defaultConfig(), limits: [] }
@@ -66,4 +66,12 @@ test('episodes that move are scored and trimmed as before', () => {
   const part = analyzeEpisode(ep(grid(91), () => 0), cfg, true)
   assert.equal(part.score, 100)
   assert.ok(!part.issues.some(i => /never moves/.test(i.msg)))
+})
+
+test('no jerk limit is suggested when nothing moves', () => {
+  const still = ep(grid(60), () => 0.5), moves = ep(grid(60), x => Math.sin(9 * x))
+  assert.equal(suggestJerkLimit([still]), null)
+  assert.equal(suggestJerkLimit([still, still, moves]), null, 'most episodes are still')
+  const fit = suggestJerkLimit([moves])!
+  assert.ok(Number.isFinite(fit) && fit >= 10)
 })

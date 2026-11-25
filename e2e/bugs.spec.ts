@@ -205,7 +205,6 @@ test('#20 secs:nsecs counts nanoseconds', async ({ page }) => {
 })
 
 test('#21 no jerk limit is suggested when nothing moves', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   await importFiles(page, frames('f.csv', { id: 'A', q0: () => 0.5 }))
   await expect(page.getByText('NaN')).toHaveCount(0, { timeout: 5000 })

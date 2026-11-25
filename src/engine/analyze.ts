@@ -389,6 +389,7 @@ export function suggestJerkLimit(eps: Episode[], factor = DEFAULT_TH.dropFactor)
   }).filter(Number.isFinite)
   if (!p99s.length) return null
   const v = 2 * median(p99s)
+  if (!(v > 0)) return null // nothing moves, so there is nothing to fit
   const mag = 10 ** Math.floor(Math.log10(v) - 1)
   return Math.max(10, Math.round(v / mag) * mag)
 }
