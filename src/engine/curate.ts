@@ -113,7 +113,7 @@ export function decisionsCsv(stats: EpisodeStats[], ds: Decision[]): string {
   const rows = ds.map(d => {
     const s = by.get(d.id)!
     const [a, b] = d.trim ?? [0, s.duration]
-    const [fa, fb] = d.trimFrames ?? [0, s.frames - 1]
+    const [fa, fb] = d.trimFrames ?? s.frameRange ?? [0, s.frames - 1]
     return [d.id, s.task, s.operator, s.success ?? '', d.include, a.toFixed(3), b.toFixed(3), fa, fb, s.score, s.tags.join(';'), d.reasons.join('; ')].map(csvCell).join(',')
   })
   return [head.join(','), ...rows].join('\n') + '\n'

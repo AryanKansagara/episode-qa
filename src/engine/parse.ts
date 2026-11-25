@@ -400,10 +400,11 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
   const eeCols = resolveCols(t.headers, m.ee).slice(0, 3).map(h => t.headers.indexOf(h))
   if (!jointCols.length) { issue(0, 'error', 'No joint position columns matched. Set the joint columns pattern.'); return out }
 
-  interface Acc { id: string; rows: { t: number; q: number[]; a?: number[]; g?: number; gc?: number; ee?: number[] }[]; cams: Map<string, number[]>; task?: string; op?: string; s?: boolean | null; line: number; lastG?: number; lastGc?: number; lastA?: number[]; badS?: boolean }
+  interface Acc { id: string; rows: { t: number; q: number[]; f: number; a?: number[]; g?: number; gc?: number; ee?: number[] }[]; cams: Map<string, number[]>; task?: string; op?: string; s?: boolean | null; line: number; lastG?: number; lastGc?: number; lastA?: number[]; badS?: boolean }
   const acc = new Map<string, Acc>()
   const get = (id: string, line: number) => { let a = acc.get(id); if (!a) { a = { id, rows: [], cams: new Map(), line }; acc.set(id, a) } return a }
   const topicCol = col(m.topic)
+  const iF = kind === 'frames' ? t.headers.findIndex(h => /^frame_index$/i.test(h)) : -1
   const reOf = (s: string) => { try { return new RegExp(s, 'i') } catch { return /$^/ } }
   const reJ = reOf(m.jointTopic), reA = reOf(m.actionTopic), reG = reOf(m.gripTopic), reC = reOf(m.cameraTopics)
   // Joint values of the joint topic only; ROS rows of other topics leave those cells empty.
@@ -441,7 +442,7 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
     const q = numsAt(r, jointCols)
     const bad = q.findIndex(x => !Number.isFinite(x))
     if (bad !== -1) return skip(line, `Joint value "${r[jointCols[bad]] ?? ''}" in ${t.headers[jointCols[bad]]} is not a number`)
-    const row: Acc['rows'][number] = { t: ts, q }
+    const row: Acc['rows'][number] = { t: ts, q, f: iF >= 0 ? num(r[iF] ?? '') : NaN }
     if (kind === 'ros') { if (a.lastA) row.a = a.lastA; if (a.lastG !== undefined) row.g = a.lastG; if (a.lastGc !== undefined) row.gc = a.lastGc }
     else {
       if (actCols.length) { const v = numsAt(r, actCols); if (v.every(Number.isFinite)) row.a = v; else issue(line, 'warn', 'Action value missing, frame kept without it') }
@@ -496,11 +497,14 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
     const A = fill(rows.map(r => r.a && r.a.length === nJ ? r.a : undefined))
     const G = fill(rows.map(r => r.g))
     const GC = fill(rows.map(r => r.gc))
+    const frame = iF >= 0 && rows.every((r, i) => Number.isSafeInteger(r.f) && r.f >= 0 && (i === 0 || r.f > rows[i - 1].f)) ? rows.map(r => r.f) : null
+    if (iF >= 0 && !frame) issue(a.line, 'warn', `Episode ${a.id}: frame_index does not count up in whole numbers, so frame numbers in exports count the rows that were kept`)
     const allEe = rows.every(r => r.ee)
     const cams = Object.fromEntries([...a.cams].map(([c, ts]) => [c, [...new Set(ts)].sort((x, y) => x - y).map(x => x - t0)]))
     out.episodes.push({
       id: a.id, task: a.task ?? 'unlabelled task', operator: a.op ?? 'unknown', success: a.s ?? null, tags: [],
       t: rows.map(r => r.t - t0), q: rows.map(r => r.q),
+      ...(frame ? { frame } : {}),
       ...(A ? { act: A } : {}),
       ...(G ? { grip: G.map(g => g / gScale) } : {}),
       ...(GC ? { gripCmd: GC.map(g => g >= 0.5 ? 1 : 0) } : {}),

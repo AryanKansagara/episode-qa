@@ -140,7 +140,7 @@ export function sliceEpisode(ep: Episode, upTo: number): Episode {
   const n = ep.t.findIndex(x => x > upTo)
   if (n === -1) return ep
   const cut = <T,>(a?: T[]) => a?.slice(0, n)
-  return { ...ep, t: ep.t.slice(0, n), q: ep.q.slice(0, n), act: cut(ep.act), grip: cut(ep.grip), gripCmd: cut(ep.gripCmd), ee: cut(ep.ee), cams: Object.fromEntries(Object.entries(ep.cams).map(([k, v]) => [k, v.filter(x => x <= upTo)])) }
+  return { ...ep, t: ep.t.slice(0, n), frame: cut(ep.frame), q: ep.q.slice(0, n), act: cut(ep.act), grip: cut(ep.grip), gripCmd: cut(ep.gripCmd), ee: cut(ep.ee), cams: Object.fromEntries(Object.entries(ep.cams).map(([k, v]) => [k, v.filter(x => x <= upTo)])) }
 }
 
 export function analyzeEpisode(ep: Episode, cfg: Config): EpisodeStats {
@@ -216,7 +216,8 @@ export function analyzeEpisode(ep: Episode, cfg: Config): EpisodeStats {
   if (trimB < tN) issues.push({ kind: 'idle', t: trimB, t2: tN, msg: `Trailing idle ${(tN - trimB).toFixed(1)} s (trim)` })
   const midIdleSec = idleSec - edgeIdleSec
   const fi = (x: number) => Math.max(0, t.findIndex(v => v >= x - 1e-9))
-  const trimFrames: [number, number] = [fi(trimA), trimB >= tN ? t.length - 1 : fi(trimB)]
+  const frameNo = (i: number) => ep.frame?.[i] ?? i
+  const trimFrames: [number, number] = [frameNo(fi(trimA)), frameNo(trimB >= tN ? t.length - 1 : fi(trimB))]
 
   // Grasps
   const grasps = detectGrasps(ep, th)
@@ -241,7 +242,7 @@ export function analyzeEpisode(ep: Episode, cfg: Config): EpisodeStats {
     id: ep.id, task: ep.task, operator: ep.operator, success: ep.success, tags: ep.tags,
     duration, frames: t.length, joints: { name: js.name, frames: js.frames, hz: js.hz, dropped: js.dropped, dropRate: js.dropRate }, cams,
     dropRate, syncMs, jerkEvents: jerkSpans.length, jerkPeak, satFrac, satChecked: limitsFit, satJoints: [...satJ].sort(), idleSec, midIdleSec, edgeIdleSec,
-    trim: [trimA, trimB], trimFrames, grasps, failedGrasps: failed.length, issues, penalties, score,
+    trim: [trimA, trimB], trimFrames, frameRange: [frameNo(0), frameNo(t.length - 1)], grasps, failedGrasps: failed.length, issues, penalties, score,
     path: downsample(ep.ee ?? q.map(r => r.slice(0, 3))).map(p => p.map(x => Math.round(x * 1e4) / 1e4)),
   }
 }

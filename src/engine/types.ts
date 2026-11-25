@@ -7,6 +7,8 @@ export interface Episode {
   success: boolean | null
   tags: string[]
   t: number[]
+  /** Frame numbers from a frame_index column, when the file has a usable one. */
+  frame?: number[]
   /** Measured joint positions [frame][joint], radians. */
   q: number[][]
   /** Commanded joint targets [frame][joint]; jerk is measured on these when present. */
@@ -87,6 +89,8 @@ export interface EpisodeStats {
   edgeIdleSec: number
   trim: [number, number]
   trimFrames: [number, number]
+  /** First and last frame number (missing in older results, where frames count from 0). */
+  frameRange?: [number, number]
   grasps: Grasp[]
   failedGrasps: number
   issues: Issue[]

@@ -167,7 +167,7 @@ export function Viewer({ ep, cfg, autoplay = false, speed = 1.6, title }: { ep: 
             : <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M7 5v14l12-7z" /></svg>}
         </button>
         <input type="range" min={t0} max={tN} step={0.01} value={t} aria-label="Scrub through the episode" onChange={e => { setT(Number(e.target.value)); setPlaying(false) }} />
-        <span className="mono tiny tab-nums">{(t - t0).toFixed(2)} / {(tN - t0).toFixed(2)} s · frame {k}</span>
+        <span className="mono tiny tab-nums">{(t - t0).toFixed(2)} / {(tN - t0).toFixed(2)} s · frame {ep.frame?.[k] ?? k}</span>
       </div>
       <ol className="feed" aria-live="polite">
         {feed.length === 0 && <li className="muted">Scrub or press play. Issues appear here as the playhead reaches them.</li>}
