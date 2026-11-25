@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { autoMap, build, detectKind, parseCsv, readTable } from './parse.ts'
+import { autoMap, build, detectKind, merge, parseCsv, readTable } from './parse.ts'
+import type { Episode } from './types.ts'
 
 const imp = (text: string, name = 'f.csv') => { const t = readTable(name, text); const m = autoMap(t.headers); return build(t, detectKind(t.headers, m), m, name) }
 const FRAMES = 'q0,q1,timestamp,episode_index,gripper,success\n' + [0, 1, 2, 3, 4].map(k => `${k / 10},0,${k / 10},a,1,true\n`).join('')
@@ -70,4 +71,25 @@ test('200,000 frames import, with the gripper scale and degrees found in the las
   assert.equal(b.episodes.length, 200)
   assert.ok(Math.abs(b.episodes[199].q[999][0] - Math.PI / 2) < 1e-12)
   assert.equal(b.episodes[0].grip![0], 0.5)
+})
+
+const episode = (): Episode => ({ id: 'a', task: 'pick', operator: 'ana', success: false, tags: ['rig-1'], t: [0, 1], q: [[0], [0]], cams: {} })
+const attach = (csv: string) => { const b = imp(csv); return { e: merge([episode()], b).ds[0], b } }
+
+test('blank or unreadable metadata keeps what is known; readable values replace it', () => {
+  const blank = attach('episode_index,task,operator,success,tags\na, ,  ,,\n').e
+  assert.deepEqual(blank, episode())
+  const odd = attach('episode_index,success\na,maybe\n')
+  assert.equal(odd.e.success, false)
+  assert.match(odd.b.issues[0].message, /"maybe" not understood/)
+  const set = attach('episode_index,task,operator,success,tags\na,place,ben,true,x;y\n').e
+  assert.deepEqual([set.task, set.operator, set.success, set.tags], ['place', 'ben', true, ['x', 'y']])
+  assert.equal(attach('episode_index,success\na,true\na,\n').e.success, true, 'a later blank row for the same episode')
+  assert.equal(attach('episode_index,success\na,true\na,false\n').e.success, false, 'the last readable row wins')
+})
+
+test('an unreadable success value in frames is warned about once and does not replace a readable one', () => {
+  const b = imp('episode_index,timestamp,q0,q1,success\n' + ['false', '', 'maybe', 'maybe', ''].map((s, k) => `a,${k},0,0,${s}\n`).join(''))
+  assert.equal(b.episodes[0].success, false)
+  assert.equal(b.issues.filter(i => /not understood/.test(i.message)).length, 1)
 })
