@@ -149,7 +149,6 @@ test('#15 trim frames are frame_index values when rows were skipped', async ({ p
 })
 
 test('#16 a formula in a task name is not written as a formula', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   await importFiles(page, frames('f.csv', { id: 'A', q0: line, task: '=1+1' }))
   await openTab(page, 'Curate & export')

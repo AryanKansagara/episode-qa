@@ -93,7 +93,7 @@ export default function Docs() {
 
       <h2 id="export">Exports</h2>
       <ul>
-        <li><strong>Curated CSV</strong>: <code>episode_id, task, operator, success, include, trim_start_s, trim_end_s, trim_start_frame, trim_end_frame, score, tags, reasons</code>. Frame numbers are the values of the <code>frame_index</code> column when the file has one; otherwise they count the rows that were kept, from 0.</li>
+        <li><strong>Curated CSV</strong>: <code>episode_id, task, operator, success, include, trim_start_s, trim_end_s, trim_start_frame, trim_end_frame, score, tags, reasons</code>. Frame numbers are the values of the <code>frame_index</code> column when the file has one; otherwise they count the rows that were kept, from 0. Text that a spreadsheet would run as a formula starts with an apostrophe.</li>
         <li><strong>Curated JSON</strong>: kept episodes with trim ranges plus excluded episodes with reasons and the rules in force. The Curate tab has a Python snippet that loads it into <code>LeRobotDataset(episodes=...)</code>.</li>
         <li><strong>Printable report</strong> and <strong>operator feedback sheet</strong>: use the browser&rsquo;s print dialog to save a PDF.</li>
       </ul>

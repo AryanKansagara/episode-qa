@@ -105,7 +105,12 @@ export function curate(stats: EpisodeStats[], rules: Rule[], overrides: Record<s
   })
 }
 
-const csvCell = (v: unknown) => { const s = v === null || v === undefined ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+/** Text that a spreadsheet would run as a formula gets a leading apostrophe; plain numbers such as "-1" stay as they are. */
+const csvCell = (v: unknown) => {
+  let s = v === null || v === undefined ? '' : String(v)
+  if (/^[=+\-@\t\r\n]/.test(s) && !/^[+-]?\d+(\.\d+)?$/.test(s)) s = `'${s}`
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
 
 export function decisionsCsv(stats: EpisodeStats[], ds: Decision[]): string {
   const by = new Map(stats.map(s => [s.id, s]))
