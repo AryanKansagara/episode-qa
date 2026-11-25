@@ -144,7 +144,6 @@ test('#16 a formula in a task name is not written as a formula', async ({ page }
 })
 
 test('#17 recordings without a mapped id column are not merged', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   const rows = ['a', 'b'].flatMap(d => [0, 1, 2, 3, 4, 5].map(k => `${d},${k / 10},${k / 10},0`))
   const panel = await offer(page, { name: 'demo.csv', text: 'demo_name,timestamp,q0,q1\n' + rows.join('\n') })

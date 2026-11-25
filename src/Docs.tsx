@@ -50,7 +50,7 @@ export default function Docs() {
 
       <h2 id="formats">Accepted formats</h2>
       <ul>
-        <li><strong>Per-frame table</strong> (CSV, TSV or JSONL): one row per joint-state sample. Needs an episode id, a timestamp and joint position columns. Optional: commanded joint targets, gripper opening (0 closed to 1 open; mm is rescaled), gripper command (1 = close), end-effector x/y/z in metres, task, operator, success.</li>
+        <li><strong>Per-frame table</strong> (CSV, TSV or JSONL): one row per joint-state sample. Needs an episode id, a timestamp and joint position columns. Without an id column the file name is used, as long as the file holds a single recording. Optional: commanded joint targets, gripper opening (0 closed to 1 open; mm is rescaled), gripper command (1 = close), end-effector x/y/z in metres, task, operator, success.</li>
         <li><strong>Episode metadata</strong> (JSONL or CSV): LeRobot <code>meta/episodes.jsonl</code> works as is. Adds task, operator, success label and tags to episodes already imported.</li>
         <li><strong>Camera frame timestamps</strong> (CSV or JSONL): <code>episode, camera, timestamp</code>, one row per frame. Needed for camera drop and sync checks when your per-frame table does not carry them.</li>
         <li><strong>ROS bag CSV</strong>: rows with a topic column and a stamp, written by the short rosbags script below. One file per bag; the file name becomes the episode id unless you map an episode column.</li>
