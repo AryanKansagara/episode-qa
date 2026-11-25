@@ -263,19 +263,26 @@ export function nearDuplicates(stats: EpisodeStats[], maxDist: number): DupPair[
   return out
 }
 
-/** Groups duplicate pairs into clusters; the best-scoring episode in each cluster is the one to keep. */
-export function dupClusters(pairs: DupPair[], stats: EpisodeStats[]): { keep: string; drop: string[] }[] {
-  const parent = new Map<string, string>()
-  const find = (x: string): string => { const p = parent.get(x) ?? x; if (p === x) return x; const r = find(p); parent.set(x, r); return r }
-  for (const { a, b } of pairs) parent.set(find(a), find(b))
-  const groups = new Map<string, string[]>()
-  for (const id of new Set(pairs.flatMap(p => [p.a, p.b]))) { const r = find(id); groups.set(r, [...(groups.get(r) ?? []), id]) }
+/**
+ * Best-scoring episodes first, each keeps its place and drops the copies that pair with it directly, so nothing is
+ * dropped for being near an episode that is itself dropped. Only `eligible` episodes (all by default) can be the kept
+ * one: a copy that something else excludes must not push out the others.
+ */
+export function dupClusters(pairs: DupPair[], stats: EpisodeStats[], eligible?: Set<string>): { keep: string; drop: string[] }[] {
+  const near = new Map<string, string[]>()
+  for (const { a, b } of pairs) { near.set(a, [...(near.get(a) ?? []), b]); near.set(b, [...(near.get(b) ?? []), a]) }
   const score = new Map(stats.map(s => [s.id, s.score]))
   const order = new Map(stats.map((s, i) => [s.id, i]))
-  return [...groups.values()].map(g => {
-    const sorted = [...g].sort((x, y) => (score.get(y)! - score.get(x)!) || order.get(x)! - order.get(y)!)
-    return { keep: sorted[0], drop: sorted.slice(1) }
-  })
+  const best = (x: string, y: string) => (score.get(y)! - score.get(x)!) || order.get(x)! - order.get(y)!
+  const placed = new Set<string>()
+  const out: { keep: string; drop: string[] }[] = []
+  for (const keep of [...near.keys()].filter(id => !eligible || eligible.has(id)).sort(best)) {
+    if (placed.has(keep)) continue
+    const drop = near.get(keep)!.filter(id => !placed.has(id)).sort(best)
+    for (const id of [keep, ...drop]) placed.add(id)
+    if (drop.length) out.push({ keep, drop })
+  }
+  return out
 }
 
 export interface OperatorStats {

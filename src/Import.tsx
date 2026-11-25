@@ -58,7 +58,7 @@ export default function DataTab({ project, ds, d }: TabProps) {
     if (!merged.length) { toast('Nothing to attach yet: import the per-frame table first.', { tone: 'error' }); return }
     await putData(target.id, merged)
     const stats = analyzeAll(merged, target.config)
-    const dv = derive(stats, target.tagEdits, target.config)
+    const dv = derive(stats, target.tagEdits, target.config, target.rules, target.overrides)
     const decisions = curate(dv.stats, target.rules, target.overrides, dv.ctx)
     const meta = { id: uuid(), kind: p.kind, fileName: p.name, rows: b.rows, skipped: b.skipped, episodes: b.episodes.length || Object.keys(b.cams).length || Object.keys(b.meta).length, at: Date.now() }
     const what = b.kind === 'cameras' ? `camera timestamps for ${report.camsAttached} episodes` : b.kind === 'episodes' ? `metadata for ${report.metaAttached} episodes` : `${report.added} new, ${report.replaced} replaced episodes`

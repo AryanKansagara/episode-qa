@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { analyzeEpisode, dupClusters, nearDuplicates, operatorStats } from './engine/analyze.ts'
-import { curate, DEFAULT_RULES, makeVersion, type Rule } from './engine/curate.ts'
+import { curate, DEFAULT_RULES, keptApartFromDuplicates, makeVersion, type Override, type Rule } from './engine/curate.ts'
 import { generateSample, SAMPLE_COUNT, SAMPLE_ID, SAMPLE_NAME } from './engine/sample.ts'
 import type { Config, Episode, EpisodeStats } from './engine/types.ts'
 import { getData, getDefaults, getProjects, saveProject, useProjects, uuid, type Dataset, type Project } from './store.ts'
@@ -18,9 +18,9 @@ export async function createSampleProject(): Promise<Project> {
   // Two versions so History has something to compare: the first pass, then tighter rules a day later.
   const rules = newRules()
   const loose = rules.map(r => r.field === 'score' ? { ...r, value: '50' } : r).filter(r => r.field !== 'labelMismatch')
-  const ctx = derive(stats, {}, { th: config.th }).ctx
-  const v1 = makeVersion(uuid(), 'Week 44 import', 'import', stats, curate(stats, loose, {}, ctx), loose, now - 86400000)
-  const v2 = makeVersion(uuid(), 'Stricter score floor, label check', 'rules', stats, curate(stats, rules, {}, ctx), rules, now - 3600000)
+  const decide = (rs: Rule[]) => curate(stats, rs, {}, derive(stats, {}, { th: config.th }, rs, {}).ctx)
+  const v1 = makeVersion(uuid(), 'Week 44 import', 'import', stats, decide(loose), loose, now - 86400000)
+  const v2 = makeVersion(uuid(), 'Stricter score floor, label check', 'rules', stats, decide(rules), rules, now - 3600000)
   return saveProject({
     id: uuid(), name: SAMPLE_NAME, createdAt: now, updatedAt: now, config, rules, overrides: {}, tagEdits: {}, stats, versions: [v1, v2], sampleId: SAMPLE_ID,
     log: [
@@ -53,20 +53,27 @@ export function useProject(id: string) {
   return { loading: list === null || (project !== null && ds === null), project, ds }
 }
 
-/** Dataset-level results from stats alone. */
-export function derive(rawStats: EpisodeStats[], tagEdits: Record<string, string[]>, cfg: Pick<Config, 'th'>) {
+function base(rawStats: EpisodeStats[], tagEdits: Record<string, string[]>, cfg: Pick<Config, 'th'>) {
   const stats = rawStats.map(s => tagEdits[s.id] ? { ...s, tags: tagEdits[s.id] } : s)
-  const pairs = nearDuplicates(stats, cfg.th.dupDist)
-  const clusters = dupClusters(pairs, stats)
-  const ctx = { dupDrop: new Set(clusters.flatMap(c => c.drop)) }
-  return { stats, pairs, clusters, ctx, ops: operatorStats(stats) }
+  return { stats, pairs: nearDuplicates(stats, cfg.th.dupDist), ops: operatorStats(stats) }
+}
+function duplicates({ stats, pairs }: ReturnType<typeof base>, rules: Rule[], overrides: Record<string, Override>) {
+  const clusters = dupClusters(pairs, stats, keptApartFromDuplicates(stats, rules, overrides))
+  return { clusters, ctx: { dupDrop: new Set(clusters.flatMap(c => c.drop)) } }
+}
+
+/** Dataset-level results from stats alone. */
+export function derive(rawStats: EpisodeStats[], tagEdits: Record<string, string[]>, cfg: Pick<Config, 'th'>, rules: Rule[], overrides: Record<string, Override>) {
+  const b = base(rawStats, tagEdits, cfg)
+  return { ...b, ...duplicates(b, rules, overrides) }
 }
 
 export function useDerived(p: Project) {
-  const base = useMemo(() => derive(p.stats, p.tagEdits, p.config), [p.stats, p.tagEdits, p.config.th.dupDist])
-  const decisions = useMemo(() => curate(base.stats, p.rules, p.overrides, base.ctx), [base, p.rules, p.overrides])
+  const b = useMemo(() => base(p.stats, p.tagEdits, p.config), [p.stats, p.tagEdits, p.config.th.dupDist])
+  const dup = useMemo(() => duplicates(b, p.rules, p.overrides), [b, p.rules, p.overrides])
+  const decisions = useMemo(() => curate(b.stats, p.rules, p.overrides, dup.ctx), [b, dup, p.rules, p.overrides])
   const keep = useMemo(() => new Set(decisions.filter(d => d.include).map(d => d.id)), [decisions])
-  return { ...base, decisions, keep }
+  return { ...b, ...dup, decisions, keep }
 }
 export type Derived = ReturnType<typeof useDerived>
 
