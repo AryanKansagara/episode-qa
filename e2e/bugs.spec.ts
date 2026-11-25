@@ -151,13 +151,31 @@ test('#17 recordings without a mapped id column are not merged', async ({ page }
 })
 
 test('#18 clearing a threshold does not store 0', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   await importFiles(page, frames('f.csv', { id: 'A', q0: line }))
   await page.getByLabel(/^Drop gap/).fill('')
   await page.waitForTimeout(1000) // the re-run is stored asynchronously; a score read too early is the old one
   await openTab(page, 'Episodes')
   expect((await cells(page.locator('.ep-table'), 'A'))[3]).toBe('100')
+})
+
+test('#18 a cleared or invalid limit keeps its value and says so', async ({ page }) => {
+  await newDataset(page)
+  await page.getByLabel('j1 max speed').fill('')
+  await expect(page.getByRole('alert')).toHaveText('Blank: still 2.17')
+  await page.getByLabel('j1 minimum').fill('')
+  await page.getByLabel('j2 max speed').fill('-1')
+  await expect(page.getByRole('alert')).toHaveText(['Blank: still -2.9', 'Blank: still 2.17', 'Not a usable number: still 2.17'])
+  await page.getByLabel('j2 max speed').blur()
+  await expect(page.getByLabel('j1 max speed')).toHaveValue('2.17')
+  await page.getByLabel('j1 max speed').fill('1.50')
+  await expect(page.getByLabel('j1 max speed')).toHaveValue('1.50')
+  await expect(page.getByRole('alert')).toHaveCount(2)
+  await page.waitForTimeout(500)
+  await page.reload()
+  await expect(page.getByLabel('j1 max speed')).toHaveValue('1.5')
+  await expect(page.getByLabel('j1 minimum')).toHaveValue('-2.9')
+  await expect(page.getByLabel('j2 max speed')).toHaveValue('2.17')
 })
 
 test('#19 an episode id of __proto__ does not touch Object.prototype', async ({ page }) => {
