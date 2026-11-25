@@ -67,7 +67,7 @@ export async function importFiles(page: Page, ...files: F[]) {
     const history = page.locator('.panel', { has: page.getByRole('heading', { name: 'Imported data' }) })
     await expect(history.getByRole('rowheader', { name: f.name, exact: true }).first()).toBeVisible()
     await expect.poll(async () => {
-      const n = (await storedData(page))[page.url().split('/')[5]]?.length
+      const n = await storedCount(page, page.url().split('/')[5])
       return n !== undefined && (await history.locator('.panel-head').innerText()).includes(`${n.toLocaleString('en-US')} episodes on this device`)
     }).toBe(true)
   }
@@ -130,6 +130,16 @@ export async function stored(page: Page): Promise<Stored> {
     }
   }))
 }
+/** Number of stored episodes of one dataset, without sending the frames to the test. */
+const storedCount = (page: Page, id: string) => page.evaluate(id => new Promise<number | undefined>((resolve, reject) => {
+  const open = indexedDB.open('episode-qa')
+  open.onerror = () => reject(open.error)
+  open.onsuccess = () => {
+    const get = open.result.transaction('data', 'readonly').objectStore('data').get(id)
+    get.onsuccess = () => { open.result.close(); resolve(get.result?.length) }
+    get.onerror = () => reject(get.error)
+  }
+}), id)
 export const storedData = async (page: Page) => (await stored(page)).data
 
 // ---------- Hand-made recordings ----------

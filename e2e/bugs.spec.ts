@@ -96,6 +96,8 @@ test('#10 a drop-rate rule above 1 % matches 9.7 %, and a blank value matches no
   await rule.getByLabel('Operator').selectOption('>')
   await rule.getByLabel('Value').fill('1')
   await rule.getByLabel('Value').press('Enter')
+  // Wait until the value is applied: the rule matches while it still says 0.
+  await expect(rule.getByRole('button', { name: /^Remove rule: .* is above 1/ })).toBeVisible()
   await expect(rule.locator('.rule-hits')).toHaveText('1 match', { timeout: 5000 })
 })
 
@@ -164,6 +166,7 @@ test('#18 clearing a threshold does not store 0', async ({ page }) => {
   await newDataset(page)
   await importFiles(page, frames('f.csv', { id: 'A', q0: line }))
   await page.getByLabel(/^Drop gap/).fill('')
+  await page.waitForTimeout(1000) // the re-run is stored asynchronously; a score read too early is the old one
   await openTab(page, 'Episodes')
   expect((await cells(page.locator('.ep-table'), 'A'))[3]).toBe('100')
 })
