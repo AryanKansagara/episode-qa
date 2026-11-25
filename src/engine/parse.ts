@@ -91,23 +91,53 @@ export function parseJsonl(text: string): Table {
   return { headers, rows: recs.map(({ r }) => headers.map(h => r[h] ?? '')), lines: recs.map(x => x.line), source: 'jsonl' }
 }
 
-/** pandas to_csv writes array columns as "[0.1, 0.2]"; split those into name.0, name.1 ... */
+const LIST = /^\s*\[(.*)\]\s*$/s
+const tokens = (c: string) => c.match(/[^[\],\s]+/g) ?? []
+const isNum = (x: string) => /^(nan|none|null|[+-]?inf(inity)?)$/i.test(x) || Number.isFinite(Number(x))
+const ESCAPES: Record<string, string> = { n: '\n', t: '\t', r: '\r' }
+const unescape = (s: string) => s.replace(/\\(?:x([0-9a-f]{2})|u([0-9a-f]{4})|(.))/gis, (_, x, u, c) => c === undefined ? String.fromCharCode(parseInt(x ?? u, 16)) : ESCAPES[c] ?? c)
+
+/** Items of a text list: ['a b', "c"] (Python, JSON), ['a' 'b'] (numpy) or [a b, c]. */
+function textItems(cell: string): string[] {
+  const inner = cell.match(LIST)?.[1]
+  if (inner === undefined) return cell.trim() ? [cell.trim()] : []
+  const out: string[] = []
+  for (const m of inner.matchAll(/'((?:[^'\\]|\\.)*)'(?=\s*(?:[,'"]|$))|"((?:[^"\\]|\\.)*)"(?=\s*(?:[,'"]|$))|[^\s,][^,]*/gs)) {
+    const quoted = m[1] ?? m[2]
+    const s = quoted !== undefined ? unescape(quoted) : m[0].trim()
+    out.push(quoted === undefined && /^(none|null|nan)$/i.test(s) ? '' : s)
+  }
+  return out
+}
+
+/** pandas to_csv writes array columns as "[0.1, 0.2]" or "['a b']"; split those into name.0, name.1 ... */
 export function expandArrays(t: Table): Table {
-  const first = t.rows[0]
-  if (!first) return t
-  const arrCols = t.headers.map((_, i) => {
-    const c = first[i] ?? ''
-    if (!/^\s*\[.*\]\s*$/s.test(c)) return 0
-    const parts = c.match(/[^[\],\s]+/g) ?? []
+  const cols = t.headers.map((_, i): { n: number; items(c: string): string[] } | null => {
+    if (!t.rows.some(r => (r[i] ?? '').trimStart().startsWith('['))) return null
+    const cells = t.rows.map(r => r[i] ?? '').filter(c => c.trim())
+    const lists = cells.filter(c => LIST.test(c))
+    if (lists.length * 2 <= cells.length) return null
+    const parts = lists.map(tokens)
+    if (parts.every(p => !p.length)) return { n: 1, items: c => LIST.test(c) ? [] : [c] }
+    const numeric = parts.filter(p => p.length && p.every(isNum)).length
+    if (numeric * 2 >= parts.filter(p => p.length).length) {
+      // Vectors have one length; a damaged row must not set it for the others.
+      const count = new Map<number, number>()
+      for (const p of parts) if (p.length) count.set(p.length, (count.get(p.length) ?? 0) + 1)
+      const n = [...count].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0]
+      return { n, items: tokens }
+    }
     // numpy wraps long arrays over several lines; text that happens to span lines in brackets stays text.
-    return c.trim().includes('\n') && !parts.every(x => /^(nan|[+-]?inf)$/i.test(x) || Number.isFinite(Number(x))) ? 0 : parts.length
+    if (lists.every(c => c.trim().includes('\n') && !/^\s*\[\s*['"]/.test(c))) return null
+    return { n: lists.reduce((m, c) => Math.max(m, textItems(c).length), 1), items: textItems }
   })
-  if (!arrCols.some(n => n > 0)) return t
-  const headers = t.headers.flatMap((h, i) => arrCols[i] ? Array.from({ length: arrCols[i] }, (_, k) => `${h}.${k}`) : [h])
+  if (cols.every(c => !c)) return t
+  const headers = t.headers.flatMap((h, i) => { const c = cols[i]; return c ? Array.from({ length: c.n }, (_, k) => `${h}.${k}`) : [h] })
   const rows = t.rows.map(r => r.flatMap((c, i) => {
-    if (!arrCols[i]) return [c]
-    const parts = c.match(/[^[\],\s]+/g) ?? []
-    return Array.from({ length: arrCols[i] }, (_, k) => parts[k] ?? '')
+    const a = cols[i]
+    if (!a) return [c]
+    const parts = a.items(c)
+    return Array.from({ length: a.n }, (_, k) => parts[k] ?? '')
   }))
   return { ...t, headers, rows }
 }
