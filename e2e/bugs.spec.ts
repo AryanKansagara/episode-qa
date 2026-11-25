@@ -6,7 +6,6 @@ const line = (k: number) => 0.1 * k
 const GOOD = 'q0,q1,timestamp,episode_index\n0,0,0.0,a\n0.1,0,0.1,a\n0.2,0,0.2,a\n0.3,0,0.3,a\n'
 
 test('#2 a row cut before the episode column is skipped with its line number', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   const panel = await offer(page, { name: 'cut.csv', text: GOOD + '0,0' })
   await expect(panel).toContainText('1 episodes ready · 4 frames')
@@ -14,7 +13,6 @@ test('#2 a row cut before the episode column is skipped with its line number', a
 })
 
 test('#2 an unclosed quote does not hide the rest of the file', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   const rows = Array.from({ length: 10 }, (_, i) => `a,${i / 10},${i / 10},0,${i === 4 ? '"pick' : 'pick'}`)
   const panel = await offer(page, { name: 'quote.csv', text: 'episode_index,timestamp,q0,q1,task\n' + rows.join('\n') + '\n' })

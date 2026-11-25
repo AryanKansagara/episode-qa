@@ -1,6 +1,13 @@
 import type { Episode } from './types.ts'
 
-export interface Table { headers: string[]; rows: string[][]; lines: number[]; source: 'csv' | 'jsonl' }
+export interface Table {
+  headers: string[]
+  rows: string[][]
+  lines: number[]
+  source: 'csv' | 'jsonl'
+  /** Problems found while reading: a cut-off last row (left out of rows), short rows (filled with blanks). */
+  problems?: Issue[]
+}
 export type Kind = 'frames' | 'cameras' | 'episodes' | 'ros'
 export const KINDS: Record<Kind, string> = {
   frames: 'Per-frame table (CSV / JSONL, LeRobot export)',
@@ -17,21 +24,41 @@ export function parseCsv(text: string): Table {
   const head = text.slice(0, nl === -1 ? text.length : nl)
   const delim = [',', '\t', ';'].map(d => [d, head.split(d).length] as const).sort((a, b) => b[1] - a[1])[0][0]
   const rows: string[][] = [], lines: number[] = []
-  let row: string[] = [], field = '', quoted = false, line = 1, rowLine = 1
+  let row: string[] = [], field = '', quoted = false, line = 1, rowLine = 1, quoteLine = 0
   const endRow = () => { row.push(field); field = ''; if (row.length > 1 || row[0] !== '') { rows.push(row); lines.push(rowLine) } row = [] }
   for (let i = 0; i < text.length; i++) {
     const c = text[i]
     if (quoted) {
       if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++ } else quoted = false }
       else { if (c === '\n') line++; field += c }
-    } else if (c === '"' && field === '') quoted = true
+    } else if (c === '"' && field === '') { quoted = true; quoteLine = line }
     else if (c === delim) { row.push(field); field = '' }
     else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; endRow(); line++; rowLine = line }
     else field += c
   }
-  if (field !== '' || row.length) endRow()
+  const openEnd = field !== '' || row.length > 0
+  if (openEnd || quoted) endRow()
   const [headers = [], ...body] = rows
-  return expandArrays({ headers: headers.map(h => h.trim()), rows: body, lines: lines.slice(1), source: 'csv' })
+  const bodyLines = lines.slice(1)
+  const problems: Issue[] = []
+  const last = body.at(-1)
+  // A header line ending in a delimiter adds nameless columns that rows may leave out.
+  const width = headers.findLastIndex(h => h.trim() !== '') + 1
+  if (quoted) {
+    problems.push({ line: quoteLine, level: 'error', message: 'A quote opened on this line is never closed, so nothing from here on could be read' })
+    if (last) { body.pop(); bodyLines.pop() }
+  } else if (last && openEnd && last.length < width && !body.slice(0, -1).some(r => r.length === last.length)) {
+    // No line break at the end and shorter than every other row: the file was cut mid-row.
+    problems.push({ line: bodyLines.at(-1)!, level: 'error', message: `The file ends in the middle of this row (${last.length} of ${width} cells)` })
+    body.pop(); bodyLines.pop()
+  }
+  const short = body.findIndex(r => r.length < width)
+  if (short !== -1) {
+    const n = body.filter(r => r.length < width).length
+    problems.push({ line: bodyLines[short], level: 'warn', message: `${n} row${n > 1 ? 's have' : ' has'} fewer cells than the header, starting here; missing cells were read as blank` })
+    for (const r of body) while (r.length < headers.length) r.push('')
+  }
+  return expandArrays({ headers: headers.map(h => h.trim()), rows: body, lines: bodyLines, source: 'csv', ...(problems.length ? { problems } : {}) })
 }
 
 function flatten(o: unknown, prefix: string, out: Record<string, string>) {
@@ -207,6 +234,7 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
   const issue = (line: number, level: Issue['level'], message: string) => { if (out.issues.length < MAX_ISSUES) out.issues.push({ line, level, message }) }
   const skip = (line: number, message: string) => { out.skipped++; issue(line, 'error', message) }
   const iEp = col(m.episode), iT = col(m.timestamp)
+  for (const x of t.problems ?? []) { out.issues.push(x); if (x.level === 'error') out.skipped++ }
   const defaultEp = fileName.replace(/\.[^.]+$/, '')
   const epOf = (r: string[]) => iEp >= 0 ? r[iEp].trim() : defaultEp
   const errCol = t.headers.indexOf('__error')
