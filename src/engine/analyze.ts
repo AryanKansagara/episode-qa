@@ -174,7 +174,7 @@ export function analyzeEpisode(ep: Episode, cfg: Config): EpisodeStats {
   // Jerk on commanded actions when present
   const jser = jerkSeries(t, ep.act ?? q, js.period, th.dropFactor)
   const jerkSpans = spans(t, jser.map(v => v > th.jerkLimit), 0.2)
-  for (const [a, b] of jerkSpans) issues.push({ kind: 'jerk', t: a, t2: b, msg: `Jerk ${Math.round(Math.max(...jser.filter((v, k) => t[k] >= a && t[k] <= b)))} rad/s³` })
+  for (const [a, b] of jerkSpans) issues.push({ kind: 'jerk', t: a, t2: b, msg: `Jerk ${Math.round(jser.reduce((m, v, k) => t[k] >= a && t[k] <= b && v > m ? v : m, 0))} rad/s³` })
   const jerkPeak = jser.reduce((m, v) => v > m ? v : m, 0)
 
   // Saturation against user-entered limits

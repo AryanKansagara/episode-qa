@@ -1,6 +1,13 @@
 import type { Episode } from './types.ts'
 
-export interface Table { headers: string[]; rows: string[][]; lines: number[]; source: 'csv' | 'jsonl' }
+export interface Table {
+  headers: string[]
+  rows: string[][]
+  lines: number[]
+  source: 'csv' | 'jsonl'
+  /** Problems found while reading: a cut-off last row (left out of rows), short rows (filled with blanks). */
+  problems?: Issue[]
+}
 export type Kind = 'frames' | 'cameras' | 'episodes' | 'ros'
 export const KINDS: Record<Kind, string> = {
   frames: 'Per-frame table (CSV / JSONL, LeRobot export)',
@@ -17,21 +24,41 @@ export function parseCsv(text: string): Table {
   const head = text.slice(0, nl === -1 ? text.length : nl)
   const delim = [',', '\t', ';'].map(d => [d, head.split(d).length] as const).sort((a, b) => b[1] - a[1])[0][0]
   const rows: string[][] = [], lines: number[] = []
-  let row: string[] = [], field = '', quoted = false, line = 1, rowLine = 1
+  let row: string[] = [], field = '', quoted = false, line = 1, rowLine = 1, quoteLine = 0
   const endRow = () => { row.push(field); field = ''; if (row.length > 1 || row[0] !== '') { rows.push(row); lines.push(rowLine) } row = [] }
   for (let i = 0; i < text.length; i++) {
     const c = text[i]
     if (quoted) {
       if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++ } else quoted = false }
       else { if (c === '\n') line++; field += c }
-    } else if (c === '"' && field === '') quoted = true
+    } else if (c === '"' && field === '') { quoted = true; quoteLine = line }
     else if (c === delim) { row.push(field); field = '' }
     else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; endRow(); line++; rowLine = line }
     else field += c
   }
-  if (field !== '' || row.length) endRow()
+  const openEnd = field !== '' || row.length > 0
+  if (openEnd || quoted) endRow()
   const [headers = [], ...body] = rows
-  return expandArrays({ headers: headers.map(h => h.trim()), rows: body, lines: lines.slice(1), source: 'csv' })
+  const bodyLines = lines.slice(1)
+  const problems: Issue[] = []
+  const last = body.at(-1)
+  // A header line ending in a delimiter adds nameless columns that rows may leave out.
+  const width = headers.findLastIndex(h => h.trim() !== '') + 1
+  if (quoted) {
+    problems.push({ line: quoteLine, level: 'error', message: 'A quote opened on this line is never closed, so nothing from here on could be read' })
+    if (last) { body.pop(); bodyLines.pop() }
+  } else if (last && openEnd && last.length < width && !body.slice(0, -1).some(r => r.length === last.length)) {
+    // No line break at the end and shorter than every other row: the file was cut mid-row.
+    problems.push({ line: bodyLines.at(-1)!, level: 'error', message: `The file ends in the middle of this row (${last.length} of ${width} cells)` })
+    body.pop(); bodyLines.pop()
+  }
+  const short = body.findIndex(r => r.length < width)
+  if (short !== -1) {
+    const n = body.filter(r => r.length < width).length
+    problems.push({ line: bodyLines[short], level: 'warn', message: `${n} row${n > 1 ? 's have' : ' has'} fewer cells than the header, starting here; missing cells were read as blank` })
+    for (const r of body) while (r.length < headers.length) r.push('')
+  }
+  return expandArrays({ headers: headers.map(h => h.trim()), rows: body, lines: bodyLines, source: 'csv', ...(problems.length ? { problems } : {}) })
 }
 
 function flatten(o: unknown, prefix: string, out: Record<string, string>) {
@@ -67,7 +94,13 @@ export function parseJsonl(text: string): Table {
 export function expandArrays(t: Table): Table {
   const first = t.rows[0]
   if (!first) return t
-  const arrCols = t.headers.map((_, i) => /^\s*\[.*\]\s*$/.test(first[i] ?? '') ? (first[i].match(/[^[\],\s]+/g) ?? []).length : 0)
+  const arrCols = t.headers.map((_, i) => {
+    const c = first[i] ?? ''
+    if (!/^\s*\[.*\]\s*$/s.test(c)) return 0
+    const parts = c.match(/[^[\],\s]+/g) ?? []
+    // numpy wraps long arrays over several lines; text that happens to span lines in brackets stays text.
+    return c.trim().includes('\n') && !parts.every(x => /^(nan|[+-]?inf)$/i.test(x) || Number.isFinite(Number(x))) ? 0 : parts.length
+  })
   if (!arrCols.some(n => n > 0)) return t
   const headers = t.headers.flatMap((h, i) => arrCols[i] ? Array.from({ length: arrCols[i] }, (_, k) => `${h}.${k}`) : [h])
   const rows = t.rows.map(r => r.flatMap((c, i) => {
@@ -187,7 +220,7 @@ const num = (s: string) => { const t = s.trim(); return t === '' ? NaN : Number(
 // ---------- Validation and build ----------
 
 export interface Issue { line: number; level: 'error' | 'warn'; message: string }
-export interface Meta { task?: string; operator?: string; success?: boolean | null; tags?: string[] }
+export interface Meta { task?: string; operator?: string; success?: boolean; tags?: string[] }
 
 export interface Built {
   kind: Kind
@@ -207,6 +240,7 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
   const issue = (line: number, level: Issue['level'], message: string) => { if (out.issues.length < MAX_ISSUES) out.issues.push({ line, level, message }) }
   const skip = (line: number, message: string) => { out.skipped++; issue(line, 'error', message) }
   const iEp = col(m.episode), iT = col(m.timestamp)
+  for (const x of t.problems ?? []) { out.issues.push(x); if (x.level === 'error') out.skipped++ }
   const defaultEp = fileName.replace(/\.[^.]+$/, '')
   const epOf = (r: string[]) => iEp >= 0 ? r[iEp].trim() : defaultEp
   const errCol = t.headers.indexOf('__error')
@@ -221,11 +255,17 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
       const id = epOf(r)
       if (!id) return skip(line, 'Missing episode id')
       const meta: Meta = {}
-      if (iTask >= 0 && r[iTask]) meta.task = cleanText(r[iTask])
-      if (iOp >= 0 && r[iOp]) meta.operator = r[iOp].trim()
-      if (iS >= 0) { meta.success = parseSuccess(r[iS]); if (r[iS].trim() && meta.success === null) issue(line, 'warn', `Success value "${r[iS]}" not understood; left unlabelled`) }
-      if (tagCols.length) meta.tags = tagCols.flatMap(i => (r[i] ?? '').split(/[;|]/)).map(s => s.trim()).filter(Boolean)
-      out.meta[id] = meta
+      // A blank or unreadable cell says nothing, so it must not replace what is already known.
+      if (iTask >= 0 && cleanText(r[iTask])) meta.task = cleanText(r[iTask])
+      if (iOp >= 0 && r[iOp].trim()) meta.operator = r[iOp].trim()
+      if (iS >= 0) {
+        const ok = parseSuccess(r[iS])
+        if (ok !== null) meta.success = ok
+        else if (r[iS].trim()) issue(line, 'warn', `Success value "${r[iS]}" not understood; any existing label is kept`)
+      }
+      const tags = tagCols.flatMap(i => (r[i] ?? '').split(/[;|]/)).map(s => s.trim()).filter(Boolean)
+      if (tags.length) meta.tags = tags
+      out.meta[id] = { ...out.meta[id], ...meta }
     })
     return out
   }
@@ -255,7 +295,7 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
   const eeCols = resolveCols(t.headers, m.ee).slice(0, 3).map(h => t.headers.indexOf(h))
   if (!jointCols.length) { issue(0, 'error', 'No joint position columns matched. Set the joint columns pattern.'); return out }
 
-  interface Acc { id: string; rows: { t: number; q: number[]; a?: number[]; g?: number; gc?: number; ee?: number[] }[]; cams: Record<string, number[]>; task?: string; op?: string; s?: boolean | null; line: number; lastG?: number; lastGc?: number; lastA?: number[] }
+  interface Acc { id: string; rows: { t: number; q: number[]; a?: number[]; g?: number; gc?: number; ee?: number[] }[]; cams: Record<string, number[]>; task?: string; op?: string; s?: boolean | null; line: number; lastG?: number; lastGc?: number; lastA?: number[]; badS?: boolean }
   const acc = new Map<string, Acc>()
   const get = (id: string, line: number) => { let a = acc.get(id); if (!a) { a = { id, rows: [], cams: {}, line }; acc.set(id, a) } return a }
   const topicCol = col(m.topic)
@@ -299,19 +339,25 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
       if (iGC >= 0) { const g = num(r[iGC]); if (Number.isFinite(g)) row.gc = g }
     }
     if (eeCols.length === 3) { const v = numsAt(r, eeCols); if (v.every(Number.isFinite)) row.ee = v }
-    if (iTask >= 0 && r[iTask] && !a.task) a.task = (t.headers[iTask] === 'task_index' ? 'task ' : '') + cleanText(r[iTask])
-    if (iOp >= 0 && r[iOp] && !a.op) a.op = r[iOp].trim()
-    if (iS >= 0 && r[iS].trim()) a.s = parseSuccess(r[iS])
+    if (iTask >= 0 && cleanText(r[iTask]) && !a.task) a.task = (t.headers[iTask] === 'task_index' ? 'task ' : '') + cleanText(r[iTask])
+    if (iOp >= 0 && r[iOp].trim() && !a.op) a.op = r[iOp].trim()
+    if (iS >= 0 && r[iS].trim()) {
+      const ok = parseSuccess(r[iS])
+      if (ok !== null) a.s = ok
+      else if (!a.badS) { a.badS = true; issue(line, 'warn', `Episode ${id}: success value "${r[iS]}" not understood and ignored`) }
+    }
     a.rows.push(row)
   })
 
   // Gripper scale: normalize to 0..1 when values look like mm or radians of finger travel.
-  const gMax = Math.max(0, ...[...acc.values()].flatMap(a => a.rows.map(r => r.g ?? 0)))
+  let gMax = 0
+  for (const a of acc.values()) for (const r of a.rows) gMax = Math.max(gMax, r.g ?? 0)
   if (gMax > 1.05) issue(0, 'warn', `Gripper values go up to ${+gMax.toFixed(3)}; scaled so ${+gMax.toFixed(3)} = fully open`)
   const gScale = gMax > 1.05 ? gMax : 1
 
   // Angle units: LeRobot Koch / SO-100 exports store joints in degrees; the checks work in radians.
-  const qMax = Math.max(0, ...[...acc.values()].flatMap(a => a.rows.map(r => r.q.reduce((m, x) => Math.max(m, Math.abs(x)), 0))))
+  let qMax = 0
+  for (const a of acc.values()) for (const r of a.rows) for (const x of r.q) qMax = Math.max(qMax, Math.abs(x))
   const deg = m.angles === 'deg' || (m.angles !== 'rad' && qMax > 2 * Math.PI + 0.5)
   if (deg) {
     const k = Math.PI / 180
@@ -375,7 +421,7 @@ export function merge(ds: Episode[], b: Built): { ds: Episode[]; report: MergeRe
   for (const [id, m] of Object.entries(b.meta)) {
     const e = by.get(id)
     if (!e) { report.unmatched.push(id); continue }
-    by.set(id, { ...e, task: m.task ?? e.task, operator: m.operator ?? e.operator, success: m.success !== undefined ? m.success : e.success, tags: m.tags ?? e.tags })
+    by.set(id, { ...e, task: m.task ?? e.task, operator: m.operator ?? e.operator, success: m.success ?? e.success, tags: m.tags ?? e.tags })
     report.metaAttached++
   }
   return { ds: [...by.values()], report }
