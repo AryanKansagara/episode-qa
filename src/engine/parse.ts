@@ -340,12 +340,14 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
   })
 
   // Gripper scale: normalize to 0..1 when values look like mm or radians of finger travel.
-  const gMax = Math.max(0, ...[...acc.values()].flatMap(a => a.rows.map(r => r.g ?? 0)))
+  let gMax = 0
+  for (const a of acc.values()) for (const r of a.rows) gMax = Math.max(gMax, r.g ?? 0)
   if (gMax > 1.05) issue(0, 'warn', `Gripper values go up to ${+gMax.toFixed(3)}; scaled so ${+gMax.toFixed(3)} = fully open`)
   const gScale = gMax > 1.05 ? gMax : 1
 
   // Angle units: LeRobot Koch / SO-100 exports store joints in degrees; the checks work in radians.
-  const qMax = Math.max(0, ...[...acc.values()].flatMap(a => a.rows.map(r => r.q.reduce((m, x) => Math.max(m, Math.abs(x)), 0))))
+  let qMax = 0
+  for (const a of acc.values()) for (const r of a.rows) for (const x of r.q) qMax = Math.max(qMax, Math.abs(x))
   const deg = m.angles === 'deg' || (m.angles !== 'rad' && qMax > 2 * Math.PI + 0.5)
   if (deg) {
     const k = Math.PI / 180
