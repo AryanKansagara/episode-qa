@@ -58,7 +58,6 @@ test('#6 an arm moving through a slower recording is not idle', async ({ page })
 })
 
 test('#7 blank metadata does not erase a failure label', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   await importFiles(page, frames('f.csv', { id: 'A', q0: line, success: 'false' }), { name: 'm.csv', text: 'episode_index,operator,success,tags\nA,zoe,,\n' })
   const j = await curatedJson(page)

@@ -220,7 +220,7 @@ const num = (s: string) => { const t = s.trim(); return t === '' ? NaN : Number(
 // ---------- Validation and build ----------
 
 export interface Issue { line: number; level: 'error' | 'warn'; message: string }
-export interface Meta { task?: string; operator?: string; success?: boolean | null; tags?: string[] }
+export interface Meta { task?: string; operator?: string; success?: boolean; tags?: string[] }
 
 export interface Built {
   kind: Kind
@@ -255,11 +255,17 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
       const id = epOf(r)
       if (!id) return skip(line, 'Missing episode id')
       const meta: Meta = {}
-      if (iTask >= 0 && r[iTask]) meta.task = cleanText(r[iTask])
-      if (iOp >= 0 && r[iOp]) meta.operator = r[iOp].trim()
-      if (iS >= 0) { meta.success = parseSuccess(r[iS]); if (r[iS].trim() && meta.success === null) issue(line, 'warn', `Success value "${r[iS]}" not understood; left unlabelled`) }
-      if (tagCols.length) meta.tags = tagCols.flatMap(i => (r[i] ?? '').split(/[;|]/)).map(s => s.trim()).filter(Boolean)
-      out.meta[id] = meta
+      // A blank or unreadable cell says nothing, so it must not replace what is already known.
+      if (iTask >= 0 && cleanText(r[iTask])) meta.task = cleanText(r[iTask])
+      if (iOp >= 0 && r[iOp].trim()) meta.operator = r[iOp].trim()
+      if (iS >= 0) {
+        const ok = parseSuccess(r[iS])
+        if (ok !== null) meta.success = ok
+        else if (r[iS].trim()) issue(line, 'warn', `Success value "${r[iS]}" not understood; any existing label is kept`)
+      }
+      const tags = tagCols.flatMap(i => (r[i] ?? '').split(/[;|]/)).map(s => s.trim()).filter(Boolean)
+      if (tags.length) meta.tags = tags
+      out.meta[id] = { ...out.meta[id], ...meta }
     })
     return out
   }
@@ -289,7 +295,7 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
   const eeCols = resolveCols(t.headers, m.ee).slice(0, 3).map(h => t.headers.indexOf(h))
   if (!jointCols.length) { issue(0, 'error', 'No joint position columns matched. Set the joint columns pattern.'); return out }
 
-  interface Acc { id: string; rows: { t: number; q: number[]; a?: number[]; g?: number; gc?: number; ee?: number[] }[]; cams: Record<string, number[]>; task?: string; op?: string; s?: boolean | null; line: number; lastG?: number; lastGc?: number; lastA?: number[] }
+  interface Acc { id: string; rows: { t: number; q: number[]; a?: number[]; g?: number; gc?: number; ee?: number[] }[]; cams: Record<string, number[]>; task?: string; op?: string; s?: boolean | null; line: number; lastG?: number; lastGc?: number; lastA?: number[]; badS?: boolean }
   const acc = new Map<string, Acc>()
   const get = (id: string, line: number) => { let a = acc.get(id); if (!a) { a = { id, rows: [], cams: {}, line }; acc.set(id, a) } return a }
   const topicCol = col(m.topic)
@@ -333,9 +339,13 @@ export function build(t: Table, kind: Kind, m: Mapping, fileName = 'file'): Buil
       if (iGC >= 0) { const g = num(r[iGC]); if (Number.isFinite(g)) row.gc = g }
     }
     if (eeCols.length === 3) { const v = numsAt(r, eeCols); if (v.every(Number.isFinite)) row.ee = v }
-    if (iTask >= 0 && r[iTask] && !a.task) a.task = (t.headers[iTask] === 'task_index' ? 'task ' : '') + cleanText(r[iTask])
-    if (iOp >= 0 && r[iOp] && !a.op) a.op = r[iOp].trim()
-    if (iS >= 0 && r[iS].trim()) a.s = parseSuccess(r[iS])
+    if (iTask >= 0 && cleanText(r[iTask]) && !a.task) a.task = (t.headers[iTask] === 'task_index' ? 'task ' : '') + cleanText(r[iTask])
+    if (iOp >= 0 && r[iOp].trim() && !a.op) a.op = r[iOp].trim()
+    if (iS >= 0 && r[iS].trim()) {
+      const ok = parseSuccess(r[iS])
+      if (ok !== null) a.s = ok
+      else if (!a.badS) { a.badS = true; issue(line, 'warn', `Episode ${id}: success value "${r[iS]}" not understood and ignored`) }
+    }
     a.rows.push(row)
   })
 
@@ -411,7 +421,7 @@ export function merge(ds: Episode[], b: Built): { ds: Episode[]; report: MergeRe
   for (const [id, m] of Object.entries(b.meta)) {
     const e = by.get(id)
     if (!e) { report.unmatched.push(id); continue }
-    by.set(id, { ...e, task: m.task ?? e.task, operator: m.operator ?? e.operator, success: m.success !== undefined ? m.success : e.success, tags: m.tags ?? e.tags })
+    by.set(id, { ...e, task: m.task ?? e.task, operator: m.operator ?? e.operator, success: m.success ?? e.success, tags: m.tags ?? e.tags })
     report.metaAttached++
   }
   return { ds: [...by.values()], report }
