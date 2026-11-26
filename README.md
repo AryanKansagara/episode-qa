@@ -34,6 +34,7 @@ cp .env.example .env   # public Supabase URL and publishable key; optional
 npm run dev
 npm test
 npm run build
+npm run test:e2e       # Playwright on the production build; first run: npx playwright install chromium; E2E_PORT picks the port
 ```
 
 Live: https://episode-qa.vercel.app
