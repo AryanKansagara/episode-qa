@@ -6,7 +6,6 @@ const line = (k: number) => 0.1 * k
 const GOOD = 'q0,q1,timestamp,episode_index\n0,0,0.0,a\n0.1,0,0.1,a\n0.2,0,0.2,a\n0.3,0,0.3,a\n'
 
 test('#2 a row cut before the episode column is skipped with its line number', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   const panel = await offer(page, { name: 'cut.csv', text: GOOD + '0,0' })
   await expect(panel).toContainText('1 episodes ready · 4 frames')
@@ -14,7 +13,6 @@ test('#2 a row cut before the episode column is skipped with its line number', a
 })
 
 test('#2 an unclosed quote does not hide the rest of the file', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   const rows = Array.from({ length: 10 }, (_, i) => `a,${i / 10},${i / 10},0,${i === 4 ? '"pick' : 'pick'}`)
   const panel = await offer(page, { name: 'quote.csv', text: 'episode_index,timestamp,q0,q1,task\n' + rows.join('\n') + '\n' })
@@ -24,7 +22,6 @@ test('#2 an unclosed quote does not hide the rest of the file', async ({ page })
 // Written by pandas 2.3.3 / numpy 2.2.6 / pyarrow 20 with the command in Docs (read_parquet, then to_csv).
 const NUMPY7 = [0, 0.02, 0.04, 0.06].map((t, i) => `"[ 0.27646735  0.6572945   0.26434967 -1.0425258   0.7242847   0.35709965\n -0.4295626 ]","[ 0.46489447  0.29165792  0.235306    0.02273779  0.4373704  -0.58916324\n -0.13032795]",0,${i},${t}`)
 test('#3 numpy arrays wrapped over two lines import as joints', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   const panel = await offer(page, { name: 'numpy.csv', text: 'observation.state,action,episode_index,frame_index,timestamp\n' + NUMPY7.join('\n') + '\n' })
   await expect(panel).toContainText('1 episodes ready · 4 frames · 7 joints · actions', { timeout: 5000 })
@@ -36,7 +33,6 @@ test('#3 numpy arrays wrapped over two lines import as joints', async ({ page })
 
 test('#4 200,000 frames can be imported', async ({ page }) => {
   test.slow()
-  test.fail()
   await newDataset(page)
   const text = 'episode_index,timestamp,q0,q1,gripper\n' + Array.from({ length: 200_000 }, (_, i) => `${Math.floor(i / 1000)},${(i % 1000) / 10},0.1,0.2,40`).join('\n')
   await drop(page, { name: 'big.csv', text })
@@ -60,7 +56,6 @@ test('#6 an arm moving through a slower recording is not idle', async ({ page })
 })
 
 test('#7 blank metadata does not erase a failure label', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   await importFiles(page, frames('f.csv', { id: 'A', q0: line, success: 'false' }), { name: 'm.csv', text: 'episode_index,operator,success,tags\nA,zoe,,\n' })
   const j = await curatedJson(page)
