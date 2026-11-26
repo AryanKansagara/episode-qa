@@ -48,7 +48,6 @@ for (const n of [1, 2, 3]) test(`#5 ${n} dropped frame(s) in a constant-speed mo
 })
 
 test('#6 an arm moving through a slower recording is not idle', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   const t = [...Array.from({ length: 91 }, (_, k) => k / 30), ...Array.from({ length: 30 }, (_, k) => 3 + (k + 1) / 10)]
   await importFiles(page, frames('slow.csv', { id: 'A', t, q0: (_, x) => x }))

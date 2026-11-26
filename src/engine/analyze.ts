@@ -195,7 +195,8 @@ export function analyzeEpisode(ep: Episode, cfg: Config): EpisodeStats {
   for (const [a, b] of spans(t, satFlag, 0.1)) issues.push({ kind: 'saturation', t: a, t2: b, msg: `At a joint limit for ${(b - a).toFixed(1)} s` })
 
   // Idle: fastest joint below idleSpeed, on a 5-frame moving average so sensor noise does not split stretches
-  const speed = vel.map(v => v.reduce((m, x) => Math.max(m, Math.abs(x)), 0))
+  // Across a dropped gap the mean speed (distance / gap) still shows that the arm moved; unknown must not read as still.
+  const speed = q.map((row, k) => k === 0 || !(t[k] > t[k - 1]) ? NaN : row.reduce((m, x, j) => Math.max(m, Math.abs(x - q[k - 1][j])), 0) / (t[k] - t[k - 1]))
   const idleFlag = speed.map((_, k) => {
     let s = 0, c = 0
     for (let i = Math.max(0, k - 2); i <= Math.min(speed.length - 1, k + 2); i++) if (!Number.isNaN(speed[i])) { s += speed[i]; c++ }
