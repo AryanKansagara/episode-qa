@@ -336,7 +336,7 @@ function Balance({ project, d, update }: TabProps) {
             ))}
           </div>
         )}
-        <p className="muted small">Common causes: the same bag exported twice, an episode replayed for a demo, or a logger that did not rotate files. The best-scoring copy is kept.</p>
+        <p className="muted small">Common causes: the same bag exported twice, an episode replayed for a demo, or a logger that did not rotate files. The best-scoring copy that nothing else excludes is kept.</p>
       </div>
     </>
   )

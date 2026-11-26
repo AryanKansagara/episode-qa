@@ -79,6 +79,12 @@ export function describeRule(r: Rule): string {
 }
 
 export type Override = 'keep' | 'exclude'
+
+/** Episodes that stay in when only the rules about duplicates are left out: the ones that can be the kept copy. */
+export function keptApartFromDuplicates(stats: EpisodeStats[], rules: Rule[], overrides: Record<string, Override>): Set<string> {
+  return new Set(curate(stats, rules.filter(r => r.field !== 'duplicate'), overrides, { dupDrop: new Set() }).filter(d => d.include).map(d => d.id))
+}
+
 export interface Decision { id: string; include: boolean; reasons: string[]; trim: [number, number] | null; trimFrames: [number, number] | null; manual: boolean }
 
 /**

@@ -94,7 +94,6 @@ test('#10 a drop-rate rule above 1 % matches 9.7 %, and a blank value matches no
 })
 
 test('#11 excluding the kept copy keeps the other one', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   await importFiles(page, frames('f.csv', { id: 'A', q0: line, task: 't' }, { id: 'B', q0: line, task: 't' }))
   await (await openEpisode(page, 'A')).getByRole('button', { name: 'Exclude', exact: true }).click()
