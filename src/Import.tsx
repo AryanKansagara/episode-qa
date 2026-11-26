@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { ConfigEditor } from './ConfigEditor.tsx'
 import { makeVersion, curate } from './engine/curate.ts'
-import { autoMap, build, camerasCsv, detectKind, episodesJsonl, framesCsv, KINDS, merge, readTable, resolveCols, type Built, type Kind, type Mapping, type Table } from './engine/parse.ts'
+import { autoMap, build, camerasCsv, detectKind, episodesJsonl, framesCsv, KINDS, merge, readTable, resolveCols, UNIT_NAME, type Built, type Kind, type Mapping, type StampUnit, type Table } from './engine/parse.ts'
 import type { Config } from './engine/types.ts'
 import type { TabProps } from './Project.tsx'
 import { analyzeAll, createBlankProject, derive } from './projectData.ts'
@@ -169,6 +169,13 @@ function PendingFile({ p, onChange, onCancel, onCommit }: { p: Pending; onChange
           <label className="field"><span>Joint angle units</span>
             <select value={p.map.angles ?? 'auto'} onChange={e => onChange({ ...p, map: { ...p.map, angles: e.target.value as Mapping['angles'] } })}>
               <option value="auto">Auto (degrees if beyond ±2π)</option><option value="rad">Radians</option><option value="deg">Degrees (Koch, SO-100)</option>
+            </select>
+          </label>
+        )}
+        {p.kind !== 'episodes' && (
+          <label className="field"><span>Timestamp unit</span>
+            <select value={p.map.stamps ?? 'auto'} onChange={e => onChange({ ...p, map: { ...p.map, stamps: e.target.value as Mapping['stamps'] } })}>
+              <option value="auto">Auto (from the values)</option>{(Object.keys(UNIT_NAME) as StampUnit[]).map(u => <option key={u} value={u}>{UNIT_NAME[u]}</option>)}
             </select>
           </label>
         )}
