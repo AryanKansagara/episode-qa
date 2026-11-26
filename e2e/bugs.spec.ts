@@ -40,7 +40,6 @@ test('#4 200,000 frames can be imported', async ({ page }) => {
 })
 
 for (const n of [1, 2, 3]) test(`#5 ${n} dropped frame(s) in a constant-speed move are not jerk`, async ({ page }) => {
-  test.fail(n === 1)
   await newDataset(page)
   await importFiles(page, frames('drop.csv', { id: 'A', q0: k => k / 30, hz: 30, n: 91, skip: [45, 46, 47].slice(0, n) }))
   const ep = await openEpisode(page, 'A')
