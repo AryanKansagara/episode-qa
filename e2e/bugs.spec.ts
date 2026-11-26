@@ -22,7 +22,6 @@ test('#2 an unclosed quote does not hide the rest of the file', async ({ page })
 // Written by pandas 2.3.3 / numpy 2.2.6 / pyarrow 20 with the command in Docs (read_parquet, then to_csv).
 const NUMPY7 = [0, 0.02, 0.04, 0.06].map((t, i) => `"[ 0.27646735  0.6572945   0.26434967 -1.0425258   0.7242847   0.35709965\n -0.4295626 ]","[ 0.46489447  0.29165792  0.235306    0.02273779  0.4373704  -0.58916324\n -0.13032795]",0,${i},${t}`)
 test('#3 numpy arrays wrapped over two lines import as joints', async ({ page }) => {
-  test.fail()
   await newDataset(page)
   const panel = await offer(page, { name: 'numpy.csv', text: 'observation.state,action,episode_index,frame_index,timestamp\n' + NUMPY7.join('\n') + '\n' })
   await expect(panel).toContainText('1 episodes ready · 4 frames · 7 joints · actions', { timeout: 5000 })

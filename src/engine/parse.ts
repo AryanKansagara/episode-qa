@@ -94,7 +94,13 @@ export function parseJsonl(text: string): Table {
 export function expandArrays(t: Table): Table {
   const first = t.rows[0]
   if (!first) return t
-  const arrCols = t.headers.map((_, i) => /^\s*\[.*\]\s*$/.test(first[i] ?? '') ? (first[i].match(/[^[\],\s]+/g) ?? []).length : 0)
+  const arrCols = t.headers.map((_, i) => {
+    const c = first[i] ?? ''
+    if (!/^\s*\[.*\]\s*$/s.test(c)) return 0
+    const parts = c.match(/[^[\],\s]+/g) ?? []
+    // numpy wraps long arrays over several lines; text that happens to span lines in brackets stays text.
+    return c.trim().includes('\n') && !parts.every(x => /^(nan|[+-]?inf)$/i.test(x) || Number.isFinite(Number(x))) ? 0 : parts.length
+  })
   if (!arrCols.some(n => n > 0)) return t
   const headers = t.headers.flatMap((h, i) => arrCols[i] ? Array.from({ length: arrCols[i] }, (_, k) => `${h}.${k}`) : [h])
   const rows = t.rows.map(r => r.flatMap((c, i) => {
